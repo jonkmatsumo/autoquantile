@@ -2,35 +2,48 @@ import xgboost as xgb
 import pandas as pd
 import numpy as np
 from .preprocessing import LevelEncoder, LocationEncoder, SampleWeighter
+from .config_loader import get_config
 
 class SalaryForecaster:
     def __init__(self):
         self.models = {}
-        self.targets = ["BaseSalary", "Stock", "Bonus", "TotalComp"]
-        self.quantiles = [0.25, 0.50, 0.75]
+        config = get_config()
+        model_config = config["model"]
+        
+        self.targets = model_config["targets"]
+        self.quantiles = model_config["quantiles"]
         
         self.level_encoder = LevelEncoder()
         self.loc_encoder = LocationEncoder()
-        self.weighter = SampleWeighter(k=1.0)
+        
+        # Use k from config or default to 1.0 if not present
+        k = model_config.get("sample_weight_k", 1.0)
+        self.weighter = SampleWeighter(k=k)
+        
+        self.features_config = model_config["features"]
+        self.feature_names = [f["name"] for f in self.features_config]
         
     def _preprocess(self, X):
         X_proc = X.copy()
         X_proc["Level_Enc"] = self.level_encoder.transform(X["Level"])
         X_proc["Location_Enc"] = self.loc_encoder.transform(X["Location"])
         
-        # Select features for model
-        features = ["Level_Enc", "Location_Enc", "YearsOfExperience", "YearsAtCompany"]
-        return X_proc[features]
+        # Select features for model based on config
+        # Note: Some features might be raw columns (YearsOfExperience) and some might be engineered (Level_Enc)
+        # The config lists the final feature names.
+        # We need to ensure X_proc has all of them.
+        # Assuming input X has "YearsOfExperience" and "YearsAtCompany" already.
+        
+        return X_proc[self.feature_names]
 
     def train(self, df):
         X = self._preprocess(df)
         weights = self.weighter.transform(df["Date"])
         
         # Monotonic constraints
-        # 1: increasing, -1: decreasing, 0: no constraint
-        # Features: [Level_Enc, Location_Enc, YearsOfExperience, YearsAtCompany]
-        # XGBoost expects a tuple
-        monotone_constraints = "(1, 0, 1, 0)"
+        # Construct tuple string like "(1, 0, 1, 0)" based on config order
+        constraints = [f["monotone_constraint"] for f in self.features_config]
+        monotone_constraints = str(tuple(constraints))
         
         for target in self.targets:
             y = df[target]

@@ -1,0 +1,48 @@
+{
+    "mappings": {
+        "levels": {
+            "E3": 0,
+            "E4": 1,
+            "E5": 2,
+            "E6": 3,
+            "E7": 4
+        },
+        "locations": {
+            "New York": 1, "New York City": 1, "NYC": 1, "Newark": 1, "Jersey City": 1,
+            "San Francisco": 1, "SF": 1, "Oakland": 1, "San Jose": 1, "Palo Alto": 1, "Bay Area": 1, "Mountain View": 1, "Sunnyvale": 1,
+            "Los Angeles": 2, "LA": 2,
+            "Seattle": 2, "Bellevue": 2, "Redmond": 2,
+            "Washington DC": 2, "DC": 2, "Washington": 2, "Arlington": 2,
+            "Austin": 3,
+            "Boston": 3, "Cambridge": 3,
+            "Denver": 3, "Boulder": 3,
+            "Houston": 3,
+            "Portland": 3,
+            "Sacramento": 3,
+            "San Diego": 3
+        }
+    },
+    "model": {
+        "targets": ["BaseSalary", "Stock", "Bonus", "TotalComp"],
+        "quantiles": [0.25, 0.50, 0.75],
+        "sample_weight_k": 1.0,
+        "features": [
+            {
+                "name": "Level_Enc",
+                "monotone_constraint": 1
+            },
+            {
+                "name": "Location_Enc",
+                "monotone_constraint": 0
+            },
+            {
+                "name": "YearsOfExperience",
+                "monotone_constraint": 1
+            },
+            {
+                "name": "YearsAtCompany",
+                "monotone_constraint": 0
+            }
+        ]
+    }
+}

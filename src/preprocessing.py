@@ -1,20 +1,15 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from .config_loader import get_config
 
 class LevelEncoder:
     """
-    Maps company levels to ordinal integers.
-    E3 -> 0, E4 -> 1, E5 -> 2, E6 -> 3, E7 -> 4
+    Maps company levels to ordinal integers based on config.
     """
     def __init__(self):
-        self.mapping = {
-            "E3": 0,
-            "E4": 1,
-            "E5": 2,
-            "E6": 3,
-            "E7": 4
-        }
+        config = get_config()
+        self.mapping = config["mappings"]["levels"]
 
     def fit(self, X, y=None):
         return self
@@ -27,32 +22,11 @@ class LevelEncoder:
 
 class LocationEncoder:
     """
-    Maps locations to Cost Zones (1-4).
-    Zone 1: NYC, SF Bay Area
-    Zone 2: LA, Seattle, DC
-    Zone 3: Austin, Boston, Denver, Houston, Portland, Sacramento, San Diego
-    Zone 4: Rest of World / National Average
+    Maps locations to Cost Zones based on config.
     """
     def __init__(self):
-        self.zone_mapping = {
-            # Zone 1
-            "New York": 1, "New York City": 1, "NYC": 1, "Newark": 1, "Jersey City": 1,
-            "San Francisco": 1, "SF": 1, "Oakland": 1, "San Jose": 1, "Palo Alto": 1, "Bay Area": 1, "Mountain View": 1, "Sunnyvale": 1,
-            
-            # Zone 2
-            "Los Angeles": 2, "LA": 2,
-            "Seattle": 2, "Bellevue": 2, "Redmond": 2,
-            "Washington DC": 2, "DC": 2, "Washington": 2, "Arlington": 2,
-            
-            # Zone 3
-            "Austin": 3,
-            "Boston": 3, "Cambridge": 3,
-            "Denver": 3, "Boulder": 3,
-            "Houston": 3,
-            "Portland": 3,
-            "Sacramento": 3,
-            "San Diego": 3,
-        }
+        config = get_config()
+        self.zone_mapping = config["mappings"]["locations"]
         # Zone 4 is default
 
     def fit(self, X, y=None):
@@ -78,8 +52,13 @@ class SampleWeighter:
     Calculates sample weights based on recency.
     Weight = 1 / (1 + Age_in_Years)^k
     """
-    def __init__(self, k=1.0, ref_date=None):
-        self.k = k
+    def __init__(self, k=None, ref_date=None):
+        if k is None:
+            config = get_config()
+            self.k = config["model"].get("sample_weight_k", 1.0)
+        else:
+            self.k = k
+            
         self.ref_date = pd.to_datetime(ref_date) if ref_date else datetime.now()
 
     def fit(self, X, y=None):
