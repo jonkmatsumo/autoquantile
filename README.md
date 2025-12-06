@@ -41,23 +41,6 @@ To run the unit tests:
 python3 -m pytest tests/
 ```
 
-## Project Structure
-
-- `src/`: Source code for the package.
-    - `model/`: Model definition and preprocessing.
-        - `model.py`: Core `SalaryForecaster` class.
-        - `preprocessing.py`: Encoders and data transformation logic.
-    - `utils/`: Utility modules.
-        - `geo_utils.py`: Geocoding and proximity matching logic.
-        - `data_utils.py`: Data loading and cleaning utilities.
-        - `config_loader.py`: Configuration loading utility.
-    - `train.py`: Script to train the model.
-    - `cli.py`: Interactive CLI application.
-- `tests/`: Unit tests.
-- `salaries-list.csv`: Training data.
-- `config.json`: Configuration file.
-- `requirements.txt`: Project dependencies.
-
 ## Configuration
 
 The system is now fully configurable via `config.json`. You can modify:

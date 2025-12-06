@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from src.model import SalaryForecaster
+from src.model.model import SalaryForecaster
 
 @pytest.fixture(scope="module")
 def trained_model():
