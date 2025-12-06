@@ -72,6 +72,13 @@ def select_model(console):
         except ValueError:
             console.print("[red]Please enter a number.[/red]")
 
+def get_ordinal_suffix(n):
+    if 11 <= (n % 100) <= 13:
+        suffix = 'th'
+    else:
+        suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+    return f"{n}{suffix}"
+
 def main():
     console = Console()
     console.print("[bold green]Welcome to the Salary Forecasting CLI[/bold green]")
@@ -89,15 +96,21 @@ def main():
             
             table = Table(title="Prediction Results")
             table.add_column("Component", style="cyan", no_wrap=True)
-            table.add_column("25th Percentile", style="magenta")
-            table.add_column("50th Percentile", style="green")
-            table.add_column("75th Percentile", style="magenta")
+            
+            # Dynamically add columns based on model quantiles
+            quantiles = sorted(model.quantiles)
+            for q in quantiles:
+                percentile = int(q * 100)
+                header = f"{get_ordinal_suffix(percentile)} Percentile"
+                table.add_column(header, style="magenta")
             
             for target, preds in results.items():
-                p25 = format_currency(preds['p25'][0])
-                p50 = format_currency(preds['p50'][0])
-                p75 = format_currency(preds['p75'][0])
-                table.add_row(target, p25, p50, p75)
+                row = [target]
+                for q in quantiles:
+                    key = f"p{int(q*100)}"
+                    val = preds.get(key, [0])[0]
+                    row.append(format_currency(val))
+                table.add_row(*row)
                 
             console.print(table)
                 

@@ -41,7 +41,13 @@ def train_model(csv_path="salaries-list.csv", config_path="config.json", output_
     prediction = forecaster.predict(sample_input)
     print("Prediction for E4 New Hire in NY (3 YOE):")
     for target, preds in prediction.items():
-        print(f"  {target}: P25={preds['p25'][0]:.0f}, P50={preds['p50'][0]:.0f}, P75={preds['p75'][0]:.0f}")
+        res_str = f"  {target}: "
+        parts = []
+        for q in sorted(forecaster.quantiles):
+            key = f"p{int(q*100)}"
+            val = preds[key][0]
+            parts.append(f"P{int(q*100)}={val:.0f}")
+        print(res_str + ", ".join(parts))
 
 if __name__ == "__main__":
     train_model()
