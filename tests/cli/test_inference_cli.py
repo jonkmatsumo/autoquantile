@@ -41,7 +41,8 @@ def test_main_flow():
     with patch('src.cli.inference_cli.load_model', return_value=mock_model), \
          patch('builtins.input', side_effect=inputs), \
          patch('src.cli.inference_cli.Console') as MockConsole, \
-         patch('src.cli.inference_cli.select_model', return_value="mock_model.pkl"): # Mock selection
+         patch('src.cli.inference_cli.select_model', return_value="mock_model.pkl"), \
+         patch('src.cli.inference_cli.plt') as mock_plt: # Mock plotext
         
         mock_console_instance = MockConsole.return_value
         

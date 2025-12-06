@@ -6,3 +6,4 @@ pytest
 xgboost
 geopy
 rich
+plotext

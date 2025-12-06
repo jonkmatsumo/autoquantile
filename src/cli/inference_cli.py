@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import sys
 import glob
+import plotext as plt
 from rich.console import Console
 from rich.table import Table
 
@@ -94,15 +95,35 @@ def main():
             console.print("\n[bold blue]Calculating prediction...[/bold blue]")
             results = model.predict(input_df)
             
+            # Dynamically add columns based on model quantiles
+            quantiles = sorted(model.quantiles)
+            quantile_labels = [get_ordinal_suffix(int(q * 100)) for q in quantiles]
+
+            # Visualization
+            console.print("\n[bold blue]Visualizing Forecast...[/bold blue]")
+            plt.clear_figure()
+            plt.title("Salary Forecast by Quantile")
+            plt.xlabel("Quantile")
+            plt.ylabel("Amount ($)")
+            plt.theme("pro")
+            
+            for target, preds in results.items():
+                y_values = []
+                for q in quantiles:
+                    key = f"p{int(q*100)}"
+                    y_values.append(preds.get(key, [0])[0])
+                
+                plt.plot(range(len(quantiles)), y_values, label=target)
+            
+            plt.xticks(range(len(quantiles)), quantile_labels)
+            
+            plt.show()
+
             table = Table(title="Prediction Results")
             table.add_column("Component", style="cyan", no_wrap=True)
             
-            # Dynamically add columns based on model quantiles
-            quantiles = sorted(model.quantiles)
-            for q in quantiles:
-                percentile = int(q * 100)
-                header = f"{get_ordinal_suffix(percentile)} Percentile"
-                table.add_column(header, style="magenta")
+            for q_label in quantile_labels:
+                table.add_column(f"{q_label} Percentile", style="magenta")
             
             for target, preds in results.items():
                 row = [target]
