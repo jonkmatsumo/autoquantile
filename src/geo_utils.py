@@ -54,21 +54,24 @@ class GeoMapper:
         if city in self.cache:
             return tuple(self.cache[city])
         
-        # Geocode
-        try:
-            # Append "USA" or similar if needed, but for now rely on city string
-            # The user mentioned "Newark" -> "Newark, NJ" ambiguity, but let's try raw first
-            # or maybe append " USA" if it looks like a US city list.
-            # Given the dataset has "New York NY", "San Francisco CA", it's specific enough.
-            location = self.geolocator.geocode(city)
-            if location:
-                coords = (location.latitude, location.longitude)
-                self.cache[city] = coords
-                self._save_cache()
-                time.sleep(1) # Respect rate limits
-                return coords
-        except Exception as e:
-            print(f"Error geocoding {city}: {e}")
+        # Geocode with retries
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                location = self.geolocator.geocode(city, timeout=10) # Increased timeout
+                if location:
+                    coords = (location.latitude, location.longitude)
+                    self.cache[city] = coords
+                    self._save_cache()
+                    time.sleep(1) # Respect rate limits
+                    return coords
+                else:
+                    # If location is None, it's not a timeout, just not found.
+                    print(f"City not found: {city}")
+                    return None
+            except Exception as e:
+                print(f"Error geocoding {city} (Attempt {attempt+1}/{max_retries}): {e}")
+                time.sleep(2 * (attempt + 1)) # Backoff: 2s, 4s, 6s
             
         return None
 
