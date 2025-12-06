@@ -2,6 +2,8 @@ import pickle
 import os
 import pandas as pd
 import sys
+from rich.console import Console
+from rich.table import Table
 
 def load_model(path="salary_model.pkl"):
     if not os.path.exists(path):
@@ -46,36 +48,41 @@ def collect_user_data():
     }])
 
 def main():
-    print("Welcome to the Salary Forecasting CLI")
+    console = Console()
+    console.print("[bold green]Welcome to the Salary Forecasting CLI[/bold green]")
     model = load_model()
     
     while True:
         try:
             input_df = collect_user_data()
             
-            print("\nCalculating prediction...")
+            console.print("\n[bold blue]Calculating prediction...[/bold blue]")
             results = model.predict(input_df)
             
-            print("\n--- Prediction Results ---")
+            table = Table(title="Prediction Results")
+            table.add_column("Component", style="cyan", no_wrap=True)
+            table.add_column("25th Percentile", style="magenta")
+            table.add_column("50th Percentile", style="green")
+            table.add_column("75th Percentile", style="magenta")
+            
             for target, preds in results.items():
                 p25 = format_currency(preds['p25'][0])
                 p50 = format_currency(preds['p50'][0])
                 p75 = format_currency(preds['p75'][0])
-                print(f"{target}:")
-                print(f"  25th Percentile: {p25}")
-                print(f"  50th Percentile: {p50}")
-                print(f"  75th Percentile: {p75}")
+                table.add_row(target, p25, p50, p75)
+                
+            console.print(table)
                 
             cont = input("\nForecast another? (y/n): ").strip().lower()
             if cont != 'y':
-                print("Goodbye!")
+                console.print("[bold]Goodbye![/bold]")
                 break
                 
         except KeyboardInterrupt:
-            print("\nGoodbye!")
+            console.print("\n[bold]Goodbye![/bold]")
             break
         except Exception as e:
-            print(f"An error occurred: {e}")
+            console.print(f"[bold red]An error occurred: {e}[/bold red]")
 
 if __name__ == "__main__":
     main()
