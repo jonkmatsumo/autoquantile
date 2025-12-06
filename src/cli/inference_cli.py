@@ -2,12 +2,13 @@ import pickle
 import os
 import pandas as pd
 import sys
+import glob
 from rich.console import Console
 from rich.table import Table
 
-def load_model(path="salary_model.pkl"):
+def load_model(path):
     if not os.path.exists(path):
-        print(f"Error: Model file '{path}' not found. Please run train.py first.")
+        print(f"Error: Model file '{path}' not found.")
         sys.exit(1)
     
     with open(path, "rb") as f:
@@ -47,10 +48,37 @@ def collect_user_data():
         "YearsAtCompany": yac
     }])
 
+def select_model(console):
+    models = glob.glob("*.pkl")
+    if not models:
+        console.print("[bold red]No model files (*.pkl) found in current directory.[/bold red]")
+        console.print("Please run the training CLI first: python3 -m src.cli.train_cli")
+        sys.exit(1)
+        
+    if len(models) == 1:
+        console.print(f"[bold blue]Found one model: {models[0]}[/bold blue]")
+        return models[0]
+        
+    console.print("\n[bold]Available Models:[/bold]")
+    for i, m in enumerate(models):
+        console.print(f"{i+1}. {m}")
+        
+    while True:
+        try:
+            choice = int(console.input("\nSelect a model (number): "))
+            if 1 <= choice <= len(models):
+                return models[choice-1]
+            console.print("[red]Invalid selection.[/red]")
+        except ValueError:
+            console.print("[red]Please enter a number.[/red]")
+
 def main():
     console = Console()
     console.print("[bold green]Welcome to the Salary Forecasting CLI[/bold green]")
-    model = load_model()
+    
+    model_path = select_model(console)
+    console.print(f"Loading model from: [bold]{model_path}[/bold]")
+    model = load_model(model_path)
     
     while True:
         try:

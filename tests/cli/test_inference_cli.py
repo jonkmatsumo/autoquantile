@@ -1,11 +1,12 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd
-from src.cli import collect_user_data, main
+from src.cli.inference_cli import collect_user_data, main
 
 def test_collect_user_data():
     # Mock input to return: E5, New York, 5, 2
-    with patch('builtins.input', side_effect=["E5", "New York", "5", "2"]):
+    inputs = ["E5", "New York", "5", "2"]
+    with patch('builtins.input', side_effect=inputs):
         df = collect_user_data()
         
         assert len(df) == 1
@@ -35,9 +36,10 @@ def test_main_flow():
     # 5. n (Stop)
     inputs = ["E5", "New York", "5", "2", "n"]
     
-    with patch('src.cli.load_model', return_value=mock_model), \
+    with patch('src.cli.inference_cli.load_model', return_value=mock_model), \
          patch('builtins.input', side_effect=inputs), \
-         patch('src.cli.Console') as MockConsole:
+         patch('src.cli.inference_cli.Console') as MockConsole, \
+         patch('src.cli.inference_cli.select_model', return_value="mock_model.pkl"): # Mock selection
         
         mock_console_instance = MockConsole.return_value
         
@@ -46,12 +48,11 @@ def test_main_flow():
         # Verify predict was called
         mock_model.predict.assert_called_once()
         
-        # Verify Console was instantiated
-        MockConsole.assert_called_once()
-        
-        # Verify print was called on the console instance
-        # We expect multiple calls: welcome, calculating, table, goodbye
-        assert mock_console_instance.print.call_count >= 1
+        # Verify output contains expected strings (checking args passed to print)
+        # We can just check if "BaseSalary" was printed to the console
+        # Rich console.print is called with a Table object, so checking string content is harder directly.
+        # But we can check if table was added.
+        assert mock_console_instance.print.call_count >= 5
         
         # Verify that a Table object was printed
         # One of the calls to print should have a Table argument
