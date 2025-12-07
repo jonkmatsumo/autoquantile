@@ -1,5 +1,39 @@
 import streamlit as st
 import pandas as pd
+import json
+import copy
+
+def render_save_load_controls(current_config_state):
+    """
+    Renders Save/Load controls.
+    current_config_state: The configuration dictionary currently being edited/displayed (to be saved).
+    """
+    st.markdown("---")
+    st.subheader("Config Management")
+    
+    # Save
+    config_json = json.dumps(current_config_state, indent=2)
+    st.download_button(
+        label="Download Config JSON",
+        data=config_json,
+        file_name="config.json",
+        mime="application/json"
+    )
+    
+    # Load
+    uploaded_file = st.file_uploader("Load Config JSON", type=["json"], key="config_loader")
+    if uploaded_file is not None:
+        try:
+            loaded_config = json.load(uploaded_file)
+
+            if st.session_state.get('loaded_config_content') != loaded_config:
+                st.session_state['loaded_config_content'] = loaded_config
+                st.session_state['config_override'] = loaded_config
+                st.rerun()
+                
+        except json.JSONDecodeError:
+            st.error("Invalid JSON file.")
+
 
 def render_levels_editor(config):
     """
@@ -90,7 +124,6 @@ def render_model_config_editor(config):
     """
     st.subheader("Model Configuration")
     
-    # Defaults provided by user request
     model_config = config.get("model", {})
     
     # 1. Targets
@@ -140,7 +173,6 @@ def render_model_config_editor(config):
     }
     current_hyperparams = model_config.get("hyperparameters", default_hyperparams)
     
-    # Flatten for editing or just individual inputs? Individual seems safer/cleaner.
     t_col, cv_col = st.columns(2)
     with t_col:
         st.write("Training")
@@ -197,10 +229,11 @@ def render_config_ui(config):
     Main entry point to render the full config UI.
     Returns: A NEW config dictionary with updates applied.
     """
-    # Create a deep copy or just a new dict structure to avoid mutating input in place if we want purity
-    # But often modifying existing structure is easier. 
-    # Let's construct a new one to be safe.
-    import copy
+    # Check if there is an override from the loader
+    if "config_override" in st.session_state:
+         # Use the loaded config as the base instead of the file/default
+         config = st.session_state["config_override"]
+    
     new_config = copy.deepcopy(config)
     
     # Ensure structure exists
@@ -218,5 +251,8 @@ def render_config_ui(config):
 
     # Model
     new_config["model"] = render_model_config_editor(new_config)
+    
+    # Save/Load Controls
+    render_save_load_controls(new_config)
     
     return new_config
