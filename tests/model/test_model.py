@@ -205,3 +205,20 @@ class TestConfigHyperparams(unittest.TestCase):
         # Let's inspect call_kwargs
         self.assertEqual(call_kwargs.get("num_boost_round"), 10)
         self.assertEqual(call_kwargs.get("nfold"), 2)
+
+    def test_analyze_cv_results_static(self):
+        """Test the static helper method _analyze_cv_results directly."""
+        cv_df = pd.DataFrame({
+            'test-quantile-mean': [0.5, 0.4, 0.45, 0.6],
+            'other-metric': [1, 2, 3, 4]
+        })
+        
+        # Expected: Best score is min (0.4) at index 1 (round 2)
+        best_round, best_score = SalaryForecaster._analyze_cv_results(cv_df, 'test-quantile-mean')
+        
+        self.assertEqual(best_round, 2)
+        self.assertEqual(best_score, 0.4)
+        
+        # Test error on missing column
+        with self.assertRaises(ValueError):
+            SalaryForecaster._analyze_cv_results(cv_df, 'missing-metric')

@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from src.model.preprocessing import LevelEncoder, LocationEncoder, SampleWeighter
 from src.utils.config_loader import get_config
-from src.utils.training_utils import analyze_cv_results
+
 
 class SalaryForecaster:
     def __init__(self, config=None):
@@ -111,7 +111,7 @@ class SalaryForecaster:
                 
                 # Analyze results
                 metric_name = 'test-quantile-mean'
-                best_round, best_score = analyze_cv_results(cv_results, metric_name)
+                best_round, best_score = self._analyze_cv_results(cv_results, metric_name)
                 
                 if callback:
                     data = {
@@ -146,3 +146,16 @@ class SalaryForecaster:
             results[target] = target_res
             
         return results
+    
+    @staticmethod
+    def _analyze_cv_results(cv_results: pd.DataFrame, metric_name: str = 'test-quantile-mean'):
+        """
+        Analyzes cross-validation results to find the optimal number of rounds and the best score.
+        """
+        if metric_name not in cv_results.columns:
+            raise ValueError(f"Metric {metric_name} not found in CV results columns: {cv_results.columns}")
+            
+        best_round = cv_results[metric_name].argmin() + 1
+        best_score = cv_results[metric_name].min()
+        
+        return best_round, best_score
