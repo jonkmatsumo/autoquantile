@@ -72,3 +72,66 @@ def test_sample_weighter_future_dates():
     dates = pd.Series(["2024-01-01"])
     weights = weighter.transform(dates)
     assert weights[0] == 1.0
+
+def test_level_encoder_edge_cases():
+    mock_config = {
+        "mappings": {
+            "levels": {"E3": 0}
+        }
+    }
+    with patch('src.model.preprocessing.get_config', return_value=mock_config):
+        encoder = LevelEncoder()
+        
+        # Test with None, NaN, Empty string - should map to -1 (unknown)
+        X = pd.Series([None, np.nan, "", "Unknown"])
+        result = encoder.transform(X)
+        
+        expected = np.array([-1, -1, -1, -1])
+        np.testing.assert_array_equal(result, expected)
+
+def test_location_encoder_edge_cases():
+    with patch('src.model.preprocessing.GeoMapper') as MockGeoMapper:
+        mock_mapper = MockGeoMapper.return_value
+        # If input is not a string (e.g. NaN), get_zone might not even be called if we handle it in transform
+        # or we rely on get_zone to handle it. 
+        # Looking at implementation: 
+        # def map_loc(loc):
+        #     if not isinstance(loc, str): return 4
+        #     return self.mapper.get_zone(loc)
+        
+        encoder = LocationEncoder()
+        
+        # None, NaN -> Should return 4 (Unknown) without calling mapper.get_zone
+        X = pd.Series([None, np.nan, 123])
+        result = encoder.transform(X)
+        
+        expected = np.array([4, 4, 4])
+        np.testing.assert_array_equal(result, expected)
+        
+        # Empty string -> Should call mapper.get_zone("") -> let's say mapper returns 4 for empty
+        mock_mapper.get_zone.return_value = 4
+        
+        X_str = pd.Series(["", "   "])
+        result_str = encoder.transform(X_str)
+        
+        expected_str = np.array([4, 4])
+        np.testing.assert_array_equal(result_str, expected_str)
+
+def test_sample_weighter_edge_cases():
+    weighter = SampleWeighter(k=1.0)
+    
+    # NaT handling
+    dates = pd.Series([pd.NaT, "2023-01-01"])
+    # Age of NaT will be NaT/NaN. 1/(1+NaN)^k = NaN
+    weights = weighter.transform(dates)
+    
+    assert np.isnan(weights[0])
+    assert not np.isnan(weights[1])
+
+def test_sample_weighter_k_zero():
+    # If k=0, weights should always be 1.0 regardless of age
+    weighter = SampleWeighter(k=0.0)
+    dates = pd.Series(["2020-01-01", "2023-01-01"])
+    weights = weighter.transform(dates)
+    
+    np.testing.assert_array_equal(weights, np.array([1.0, 1.0]))
