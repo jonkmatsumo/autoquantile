@@ -59,7 +59,33 @@ class TestStreamlitApp(unittest.TestCase):
         has_warning = len(at.warning) > 0
         has_selectbox = len(at.selectbox) > 0
         
+        has_warning = len(at.warning) > 0
+        has_selectbox = len(at.selectbox) > 0
+        
         self.assertTrue(has_warning or has_selectbox, "Should show either warning or model selector")
+
+    def test_navigation_configuration(self):
+        """Verify navigation to Configuration page."""
+        at = AppTest.from_file(self.app_path)
+        at.run()
+        
+        # Select "Configuration"
+        at.sidebar.radio[0].set_value("Configuration").run()
+        
+        # Check header
+        self.assertEqual(at.header[0].value, "Configuration")
+        
+        # Check for config UI elements (e.g., config save/load, or data editors)
+        # We know we have data editors.
+        # But AppTest might not expose them directly as a list if nested?
+        # Actually in test_config_ui we saw data_editor is not supported by AppTest yet?
+        # Wait, in test_app.py Step 677 failure: "AttributeError: 'AppTest' object has no attribute 'data_editor'"
+        # So we should check for something else, like subheaders or buttons.
+        # render_save_load_controls has a download button.
+        
+        # We can check for "Config Management" subheader which is rendered by render_save_load_controls
+        subheaders = [sh.value for sh in at.subheader]
+        self.assertIn("Config Management", subheaders)
 
     def test_inference_inputs(self):
         """Verify inference inputs exist when a model is selected (mocking if possible or checking structure)."""

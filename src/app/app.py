@@ -27,21 +27,37 @@ st.title("Salary Forecasting Engine")
 
 # Sidebar
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Train Model", "Inference"])
+page = st.sidebar.radio("Go to", ["Train Model", "Inference", "Configuration"])
 
-if page == "Train Model":
+if page == "Configuration":
+    st.header("Configuration")
+    current_config = get_config()
+    # render_config_ui handles rendering and returns the updated config state
+    # independent of whether it came from defaults, session_override, or load.
+    updated_config = render_config_ui(current_config)
+    
+    # Persist changes to session state so other pages can see them
+    st.session_state["config_override"] = updated_config
+    # render_config_ui internal save/load controls also update this key, so we are consistent.
+
+elif page == "Train Model":
     st.header("Train New Model")
+    
+    # Check for active config
+    if "config_override" in st.session_state:
+        config = st.session_state["config_override"]
+        st.success("Using custom configuration.")
+        with st.expander("View Active Config"):
+            st.json(config)
+    else:
+        config = get_config()
+        st.info("Using default configuration.")
     
     col1, col2 = st.columns([1, 2])
     
     with col1:
         st.subheader("Settings")
         model_name = st.text_input("Output Model Name", value="salary_model_web.pkl")
-        
-        # Determine valid overrides via UI
-        current_config = get_config()
-        # Render the UI and get the updated config dict
-        updated_config = render_config_ui(current_config)
         
     with col2:
         st.subheader("Data & Training")
@@ -56,8 +72,8 @@ if page == "Train Model":
             
             if st.button("Start Training", type="primary"):
                 try:
-                    # Use the config from the UI
-                    config = updated_config
+                    # Use the config from session/defaults
+                    # config variable is already set above
                         
                     success_placeholder = st.empty()
                     status_container = st.status("Training in progress...", expanded=True)
@@ -176,42 +192,38 @@ elif page == "Inference":
                     quantiles = sorted(model.quantiles)
                     quantile_labels = [f"P{int(q*100)}" for q in quantiles]
                     
-                    # Create Tabs for visual vs table
-                    tab1, tab2 = st.tabs(["Visualization", "Data Table"])
+                    fig, ax = plt.subplots(figsize=(10, 6))
                     
-                    with tab1:
-                        fig, ax = plt.subplots(figsize=(10, 6))
+                    for target, preds in prediction.items():
+                        y_vals = [preds[f"p{int(q*100)}"][0] for q in quantiles]
+                        ax.plot(quantiles, y_vals, marker='o', label=target)
                         
-                        for target, preds in prediction.items():
-                            y_vals = [preds[f"p{int(q*100)}"][0] for q in quantiles]
-                            ax.plot(quantiles, y_vals, marker='o', label=target)
-                            
-                        ax.set_title("Predicted Compensation Distribution")
-                        ax.set_xlabel("Quantile")
-                        ax.set_ylabel("Amount ($)")
-                        ax.set_xticks(quantiles)
-                        ax.set_xticklabels(quantile_labels)
-                        ax.legend()
-                        ax.grid(True, linestyle='--', alpha=0.7)
-                        
-                        # Format Y axis as currency
-                        ax.get_yaxis().set_major_formatter(
-                            plt.FuncFormatter(lambda x, p: f"${x:,.0f}")
-                        )
-                        
-                        st.pyplot(fig)
-                        
-                    with tab2:
-                        # Build a nice table
-                        table_data = []
-                        for target, preds in prediction.items():
-                            row = {"Component": target}
-                            for q in quantiles:
-                                val = preds[f"p{int(q*100)}"][0]
-                                row[f"P{int(q*100)}"] = f"${val:,.0f}"
-                            table_data.append(row)
-                        
-                        st.table(pd.DataFrame(table_data))
+                    ax.set_title("Predicted Compensation Distribution")
+                    ax.set_xlabel("Quantile")
+                    ax.set_ylabel("Amount ($)")
+                    ax.set_xticks(quantiles)
+                    ax.set_xticklabels(quantile_labels)
+                    ax.legend()
+                    ax.grid(True, linestyle='--', alpha=0.7)
+                    
+                    # Format Y axis as currency
+                    ax.get_yaxis().set_major_formatter(
+                        plt.FuncFormatter(lambda x, p: f"${x:,.0f}")
+                    )
+                    
+                    st.pyplot(fig)
+                    
+                    # Build a nice table
+                    st.subheader("Detailed Data")
+                    table_data = []
+                    for target, preds in prediction.items():
+                        row = {"Component": target}
+                        for q in quantiles:
+                            val = preds[f"p{int(q*100)}"][0]
+                            row[f"P{int(q*100)}"] = f"${val:,.0f}"
+                        table_data.append(row)
+                    
+                    st.table(pd.DataFrame(table_data))
                         
             except Exception as e:
                 st.error(f"Error loading or running model: {e}")
