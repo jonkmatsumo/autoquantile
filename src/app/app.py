@@ -80,7 +80,7 @@ def render_inference_ui() -> None:
             st.subheader("Prediction Results")
             st.markdown(f"**Target Location Zone:** {forecaster.loc_encoder.mapper.get_zone(location)}")
             
-            # Display as a table
+            # Prepare data for display
             res_data = []
             for target, preds in results.items():
                 row = {"Component": target}
@@ -89,6 +89,13 @@ def render_inference_ui() -> None:
                 res_data.append(row)
                 
             res_df = pd.DataFrame(res_data)
+            
+            # 1. Visualization (Interactive Bar Chart)
+            # Use 'Component' as index so Streamlit plots quantiles as series
+            chart_df = res_df.set_index("Component")
+            st.bar_chart(chart_df)
+            
+            # 2. Table
             st.dataframe(res_df.style.format({c: "${:,.0f}" for c in res_df.columns if c != "Component"}))
 
 def render_training_ui() -> None:
@@ -97,8 +104,24 @@ def render_training_ui() -> None:
     
     st.info("Configure settings in 'Configuration' page before training.")
     
-    csv_file = st.text_input("Training Data CSV Path", "data/salary_data.csv")
-    
+    # 1. Shared Data Loading
+    df = None
+    if "training_data" in st.session_state:
+        df = st.session_state["training_data"]
+        st.success(f"Using loaded data from Data Analysis ({len(df)} rows).")
+        if st.button("Use Different File"):
+            del st.session_state["training_data"]
+            st.rerun()
+    else:
+        uploaded_file = st.file_uploader("Upload Training CSV", type=["csv"])
+        if uploaded_file:
+            try:
+                df = load_data(uploaded_file)
+                st.session_state["training_data"] = df # Cache it
+                st.success(f"Loaded {len(df)} rows.")
+            except Exception as e:
+                st.error(f"Error loading file: {e}")
+                
     do_tune = st.checkbox("Run Hyperparameter Tuning", value=False)
     num_trials = 20
     if do_tune:
@@ -107,31 +130,43 @@ def render_training_ui() -> None:
     remove_outliers = st.checkbox("Remove Outliers (IQR)", value=True)
     
     if st.button("Start Training"):
-        if not os.path.exists(csv_file):
-            st.error(f"File not found: {csv_file}")
+        if df is None:
+            st.error("No data loaded. Please upload a CSV or load data in Data Analysis.")
             return
             
+        # 2. Dynamic Results Table Setup
         status_container = st.empty()
+        results_placeholder = st.empty()
         log_container = st.empty()
+        
         logs = []
+        results_log = []
         
         def streamlit_callback(msg: str, data: Optional[Dict[str, Any]] = None) -> None:
             status_container.markdown(f"**Status:** {msg}")
             logs.append(msg)
-            if len(logs) > 10:
+            if len(logs) > 5: # Keep log short
                 logs.pop(0)
             log_container.code("\n".join(logs))
             
-        try:
-            df = load_data(csv_file)
+            # Dynamic Results Update
+            if data and data.get("stage") == "cv_end":
+                results_log.append({
+                    "Model": data.get("model_name"),
+                    "Best Round": data.get("best_round"),
+                    "Score": f"{data.get('best_score'):.4f}" 
+                })
+                # Update table in real-time
+                results_placeholder.dataframe(pd.DataFrame(results_log))
             
+        try:
             # Use current config
             forecaster = SalaryForecaster()
             
             if do_tune:
                 streamlit_callback("Starting tuning...")
                 best_params = forecaster.tune(df, n_trials=num_trials)
-                st.json(best_params)
+                st.write("Best Hyperparameters:", best_params)
             
             streamlit_callback("Starting training...")
             forecaster.train(df, callback=streamlit_callback, remove_outliers=remove_outliers)

@@ -35,8 +35,10 @@ class TestStreamlitApp(unittest.TestCase):
         self.assertEqual(at.header[0].value, "Model Training")
         
         # Check we have key elements
-        # CSV path input
-        self.assertTrue(len(at.text_input) >= 1)
+        # We can't consistently check for file_uploader in AppTest on all versions
+        # So we check for the Training button
+        self.assertTrue(len(at.button) >= 1)
+        
         # Checkboxes (Outliers, Tune)
         self.assertTrue(len(at.checkbox) >= 2)
 
