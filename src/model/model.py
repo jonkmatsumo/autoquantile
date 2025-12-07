@@ -103,12 +103,11 @@ class SalaryForecaster:
         return df_clean, removed_count
 
     def train(self, df: pd.DataFrame, callback: Optional[Callable[[str, Optional[Dict[str, Any]]], None]] = None, remove_outliers: bool = False) -> None:
-        """
-        Trains the XGBoost models.
+        """Trains the XGBoost models.
         
         Args:
             df (pd.DataFrame): Training data.
-            callback (callable, optional): function(status_msg, result_data=None).
+            callback (Optional[Callable]): Optional callback for status updates.
             remove_outliers (bool): If True, applies IQR outlier removal before training.
         """
         if remove_outliers:
@@ -127,12 +126,9 @@ class SalaryForecaster:
         X = self._preprocess(df)
         weights = self.weighter.transform(df["Date"])
         
-        # Monotonic constraints
-        # Construct tuple string like "(1, 0, 1, 0)" based on config order
         constraints = [f["monotone_constraint"] for f in self.features_config]
         monotone_constraints = str(tuple(constraints))
         
-        # Get defaults or user config for hyperparams
         hyperparams = self.model_config.get("hyperparameters", {})
         train_params_config = hyperparams.get("training", {
             "objective": "reg:quantileerror",
@@ -157,8 +153,6 @@ class SalaryForecaster:
                 else:
                     print(f"Training {model_name}...")
                 
-                # XGBoost Quantile Regression parameters
-                # Merge dynamic params with config params
                 params = train_params_config.copy()
                 params.update({
                     "quantile_alpha": q,
@@ -167,7 +161,6 @@ class SalaryForecaster:
                 
                 dtrain = xgb.DMatrix(X, label=y, weight=weights)
                 
-                # Cross-validation
                 if callback:
                     callback(f"Running Cross-Validation...", {"stage": "cv_start"})
                 
@@ -177,12 +170,11 @@ class SalaryForecaster:
                     num_boost_round=cv_params_config.get("num_boost_round", 100),
                     nfold=cv_params_config.get("nfold", 5),
                     early_stopping_rounds=cv_params_config.get("early_stopping_rounds", 10),
-                    metrics={'quantile'}, # Use quantile error metric
+                    metrics={'quantile'},
                     seed=42,
                     verbose_eval=cv_params_config.get("verbose_eval", False)
                 )
                 
-                # Analyze results
                 metric_name = 'test-quantile-mean'
                 best_round, best_score = self._analyze_cv_results(cv_results, metric_name)
                 
@@ -202,24 +194,23 @@ class SalaryForecaster:
                 self.models[model_name] = model
 
     def tune(self, df: pd.DataFrame, n_trials: int = 20, timeout: Optional[int] = None) -> Dict[str, Any]:
-        """
-        Runs Optuna optimization to find best hyperparameters.
+        """Runs Optuna optimization to find best hyperparameters.
+        
         Updates self.model_config with the best parameters found.
         
         Args:
             df (pd.DataFrame): Training data.
-            n_trials (int): Number of trials.
-            timeout (int): Timeout in seconds.
+            n_trials (int): Number of trials. Defaults to 20.
+            timeout (Optional[int]): Timeout in seconds.
             
         Returns:
-            dict: Best parameters found.
+            Dict[str, Any]: Best parameters found.
         """
         optuna.logging.set_verbosity(optuna.logging.WARNING)
         
         X = self._preprocess(df)
         weights = self.weighter.transform(df["Date"])
         
-        # Tune on the first target and median (or first) quantile
         target = self.targets[0]
         y = df[target]
         q_tune = 0.5 if 0.5 in self.quantiles else self.quantiles[0]
@@ -237,7 +228,6 @@ class SalaryForecaster:
                 "quantile_alpha": q_tune,
                 "monotone_constraints": monotone_constraints,
                 
-                # Search Space
                 "eta": trial.suggest_float("eta", 0.01, 0.3),
                 "max_depth": trial.suggest_int("max_depth", 3, 10),
                 "alpha": trial.suggest_float("alpha", 0.0, 10.0),
@@ -264,7 +254,6 @@ class SalaryForecaster:
         
         best_params = study.best_params
         
-        # Update config
         hyperparams = self.model_config.setdefault("hyperparameters", {})
         train_params = hyperparams.setdefault("training", {})
         train_params.update(best_params)
@@ -272,8 +261,13 @@ class SalaryForecaster:
         return best_params
                 
     def predict(self, X_input: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
-        """
-        Returns a dictionary of DataFrames or a structured result.
+        """Generates predictions for input data.
+
+        Args:
+            X_input (pd.DataFrame): Input data with features matching training columns.
+
+        Returns:
+            Dict[str, Dict[str, Any]]: A nested dictionary: {target: {quantile_key: predictions}}.
         """
         X_proc = self._preprocess(X_input)
         dtest = xgb.DMatrix(X_proc)
@@ -292,8 +286,14 @@ class SalaryForecaster:
     
     @staticmethod
     def _analyze_cv_results(cv_results: pd.DataFrame, metric_name: str = 'test-quantile-mean') -> Tuple[int, float]:
-        """
-        Analyzes cross-validation results to find the optimal number of rounds and the best score.
+        """Analyzes cross-validation results to find optimal rounds and best score.
+
+        Args:
+            cv_results (pd.DataFrame): XGBoost CV results dataframe.
+            metric_name (str): Name of the metric to analyze. Defaults to 'test-quantile-mean'.
+
+        Returns:
+            Tuple[int, float]: Best round (1-based) and best score.
         """
         if metric_name not in cv_results.columns:
             raise ValueError(f"Metric {metric_name} not found in CV results columns: {cv_results.columns}")

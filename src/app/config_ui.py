@@ -5,14 +5,14 @@ import copy
 from typing import Dict, Any, List
 
 def render_save_load_controls(current_config_state: Dict[str, Any]) -> None:
-    """
-    Renders Save/Load controls.
-    current_config_state: The configuration dictionary currently being edited/displayed (to be saved).
+    """Renders Save/Load controls.
+
+    Args:
+        current_config_state (Dict[str, Any]): The configuration dictionary currently being edited/displayed.
     """
     st.markdown("---")
     st.subheader("Config Management")
     
-    # Save
     config_json = json.dumps(current_config_state, indent=2)
     st.download_button(
         label="Download Config JSON",
@@ -21,7 +21,6 @@ def render_save_load_controls(current_config_state: Dict[str, Any]) -> None:
         mime="application/json"
     )
     
-    # Load
     uploaded_file = st.file_uploader("Load Config JSON", type=["json"], key="config_loader")
     if uploaded_file is not None:
         try:
@@ -37,9 +36,13 @@ def render_save_load_controls(current_config_state: Dict[str, Any]) -> None:
 
 
 def render_levels_editor(config: Dict[str, Any]) -> Dict[str, int]:
-    """
-    Renders an editor for the 'mappings.levels' section.
-    Returns the updated levels dictionary.
+    """Renders an editor for the 'mappings.levels' section.
+
+    Args:
+        config (Dict[str, Any]): Full configuration dictionary.
+
+    Returns:
+        Dict[str, int]: Updated levels dictionary.
     """
     st.subheader("Levels Configuration")
     
@@ -48,11 +51,9 @@ def render_levels_editor(config: Dict[str, Any]) -> Dict[str, int]:
     data = [{"Level": k, "Rank": v} for k, v in levels_dict.items()]
     df = pd.DataFrame(data)
     
-    # Editable dataframe
     edited_df = st.data_editor(
         df,
         num_rows="dynamic",
-        # Deprecation fix: use_container_width=True -> width="stretch"
         width="stretch",
         key="levels_editor",
         column_config={
@@ -61,18 +62,21 @@ def render_levels_editor(config: Dict[str, Any]) -> Dict[str, int]:
         }
     )
     
-    # Reconstruct dictionary
     new_levels = {}
     for index, row in edited_df.iterrows():
-        if row["Level"]: # Ensure not empty
+        if row["Level"]: 
             new_levels[row["Level"]] = int(row["Rank"])
             
     return new_levels
 
 def render_location_targets_editor(config: Dict[str, Any]) -> Dict[str, int]:
-    """
-    Renders an editor for 'mappings.location_targets'.
-    Returns updated location_targets dictionary.
+    """Renders an editor for 'mappings.location_targets'.
+
+    Args:
+        config (Dict[str, Any]): Full configuration dictionary.
+
+    Returns:
+        Dict[str, int]: Updated location_targets dictionary.
     """
     st.subheader("Location Targets")
     
@@ -84,7 +88,6 @@ def render_location_targets_editor(config: Dict[str, Any]) -> Dict[str, int]:
     edited_df = st.data_editor(
         df,
         num_rows="dynamic",
-        # Deprecation fix: use_container_width=True -> width="stretch"
         width="stretch",
         key="locations_editor",
         column_config={
@@ -101,8 +104,13 @@ def render_location_targets_editor(config: Dict[str, Any]) -> Dict[str, int]:
     return new_locs
 
 def render_location_settings_editor(config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Renders slider for location settings.
+    """Renders slider for location settings.
+
+    Args:
+        config (Dict[str, Any]): Full configuration dictionary.
+
+    Returns:
+        Dict[str, Any]: Updated location_settings dictionary.
     """
     st.subheader("Location Settings")
     
@@ -121,14 +129,19 @@ def render_location_settings_editor(config: Dict[str, Any]) -> Dict[str, Any]:
     return {"max_distance_km": new_dist}
 
 def render_model_config_editor(config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Renders editor for 'model' configuration.
+    """Renders editor for 'model' configuration.
+
+    Args:
+        config (Dict[str, Any]): Full configuration dictionary.
+
+    Returns:
+        Dict[str, Any]: Updated model configuration dictionary.
     """
     st.subheader("Model Configuration")
     
     model_config = config.get("model", {})
     
-    # 1. Targets
+    # Targets configuration
     defaults_targets = ["BaseSalary", "Stock", "Bonus", "TotalComp"]
     current_targets = model_config.get("targets", defaults_targets)
     
@@ -145,7 +158,7 @@ def render_model_config_editor(config: Dict[str, Any]) -> Dict[str, Any]:
     )
     new_targets = [row["Target"] for _, row in edited_targets_df.iterrows() if row["Target"]]
     
-    # 2. Quantiles
+    # Quantiles configuration
     defaults_quantiles = [0.1, 0.25, 0.50, 0.75, 0.9]
     current_quantiles = model_config.get("quantiles", defaults_quantiles)
     
@@ -162,7 +175,7 @@ def render_model_config_editor(config: Dict[str, Any]) -> Dict[str, Any]:
     )
     new_quantiles = [float(row["Quantile"]) for _, row in edited_quantiles_df.iterrows()]
     
-    # 3. Sample Weight
+    # Sample Weight configuration
     default_k = 1.0
     current_k = model_config.get("sample_weight_k", default_k)
     new_k = st.number_input(
@@ -173,7 +186,6 @@ def render_model_config_editor(config: Dict[str, Any]) -> Dict[str, Any]:
         help="Controls how much recent data is prioritized (higher = more weight to recent data)."
     )
     
-    # 4. Hyperparameters
     st.markdown("**Hyperparameters**")
     default_hyperparams = {
         "training": {"objective": "reg:quantileerror", "tree_method": "hist", "verbosity": 0}, 
@@ -201,7 +213,6 @@ def render_model_config_editor(config: Dict[str, Any]) -> Dict[str, Any]:
         "cv": {"num_boost_round": int(nbr), "nfold": int(nfold), "early_stopping_rounds": int(esr), "verbose_eval": False}
     }
 
-    # 5. Features (Monotone Constraints)
     st.markdown("**Features & Constraints**")
     default_features = [
         {"name": "Level_Enc", "monotone_constraint": 1},
@@ -233,34 +244,29 @@ def render_model_config_editor(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 def render_config_ui(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Main entry point to render the full config UI.
+
+    Args:
+        config (Dict[str, Any]): Full configuration dictionary to edit.
+
+    Returns:
+        Dict[str, Any]: A NEW config dictionary with updates applied.
     """
-    Main entry point to render the full config UI.
-    Returns: A NEW config dictionary with updates applied.
-    """
-    # Check if there is an override from the loader
+    st.header("Configuration")
+    
     if "config_override" in st.session_state:
-         # Use the loaded config as the base instead of the file/default
          config = st.session_state["config_override"]
     
     new_config = copy.deepcopy(config)
     
-    # Ensure structure exists
     if "mappings" not in new_config:
         new_config["mappings"] = {}
         
-    # Levels
     new_config["mappings"]["levels"] = render_levels_editor(new_config)
-    
-    # Locations
     new_config["mappings"]["location_targets"] = render_location_targets_editor(new_config)
-    
-    # Settings
     new_config["location_settings"] = render_location_settings_editor(new_config)
-
-    # Model
     new_config["model"] = render_model_config_editor(new_config)
     
-    # Save/Load Controls
     render_save_load_controls(new_config)
     
     return new_config

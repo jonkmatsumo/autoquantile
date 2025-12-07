@@ -14,6 +14,7 @@ from typing import Any, Callable, List, Optional, Union
 logger = logging.getLogger(__name__)
 
 def load_model(path: str) -> Any:
+    """Loads a pickled model object."""
     if not os.path.exists(path):
         logger.error(f"Model file '{path}' not found.")
         sys.exit(1)
@@ -22,6 +23,7 @@ def load_model(path: str) -> Any:
         return pickle.load(f)
 
 def get_input(prompt: str, type_func: Callable[[str], Any] = str, valid_options: Optional[List[Any]] = None) -> Any:
+    """Prompts user for input with type validation and optional allowed values."""
     while True:
         try:
             user_input = input(prompt).strip()
@@ -42,6 +44,7 @@ def format_currency(val: float) -> str:
     return f"${val:,.0f}"
 
 def collect_user_data() -> pd.DataFrame:
+    """Interactive prompt for candidate details."""
     print("\n--- Enter Candidate Details ---")
     level = get_input("Level (e.g. E3, E4, E5, E6, E7): ", str, ["E3", "E4", "E5", "E6", "E7"])
     location = get_input("Location (e.g. New York, San Francisco): ", str)
@@ -56,6 +59,7 @@ def collect_user_data() -> pd.DataFrame:
     }])
 
 def select_model(console: Console) -> str:
+    """Interactive model file selection."""
     models = glob.glob("*.pkl")
     if not models:
         console.print("[bold red]No model files (*.pkl) found in current directory.[/bold red]")
@@ -92,7 +96,6 @@ def main():
     parser = argparse.ArgumentParser(description="Salary Forecasting Inference CLI")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
     
-    # Non-interactive arguments
     parser.add_argument("--model", type=str, help="Path to model file")
     parser.add_argument("--level", type=str, help="Candidate Level (e.g. E5)")
     parser.add_argument("--location", type=str, help="Candidate Location")
@@ -102,10 +105,8 @@ def main():
     
     args = parser.parse_args()
     
-    # Configure logging
     log_level = logging.INFO if args.verbose else logging.WARNING
     if args.json:
-        # If JSON output, suppress logs to stderr so stdout is clean JSON
         logging.basicConfig(level=log_level, stream=sys.stderr, format='%(message)s')
     else:
         logging.basicConfig(
@@ -114,7 +115,7 @@ def main():
             datefmt='%H:%M:%S'
         )
 
-    console = Console(stderr=args.json) # Print to stderr if json mode
+    console = Console(stderr=args.json)
     if not args.json:
         console.print("[bold green]Welcome to the Salary Forecasting CLI[/bold green]")
     

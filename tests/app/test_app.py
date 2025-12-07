@@ -16,8 +16,9 @@ class TestStreamlitApp(unittest.TestCase):
         at = AppTest.from_file(self.app_path)
         at.run()
         
-        # Check title
-        self.assertEqual(at.title[0].value, "Salary Forecasting Engine")
+        # Check that we have a header (Inference by default)
+        self.assertTrue(len(at.header) > 0)
+        self.assertEqual(at.header[0].value, "Salary Inference")
         
         # Check sidebar exists
         self.assertTrue(at.sidebar.title[0].value == "Navigation")
@@ -27,18 +28,17 @@ class TestStreamlitApp(unittest.TestCase):
         at = AppTest.from_file(self.app_path)
         at.run()
         
-        # Default should be Train Model or Inference depending on radio default
-        # The app sets default radio to the first option "Train Model"
-        
-        # Select "Train Model" explicitly
-        at.sidebar.radio[0].set_value("Train Model").run()
+        # Select "Training"
+        at.sidebar.radio[0].set_value("Training").run()
         
         # Check header
-        self.assertEqual(at.header[0].value, "Train New Model")
+        self.assertEqual(at.header[0].value, "Model Training")
         
-        # Check we have config text area (button only shows after upload)
-        # Check we have model name input
+        # Check we have key elements
+        # CSV path input
         self.assertTrue(len(at.text_input) >= 1)
+        # Checkboxes (Outliers, Tune)
+        self.assertTrue(len(at.checkbox) >= 2)
 
     def test_navigation_inference(self):
         """Verify navigation to Inference page."""

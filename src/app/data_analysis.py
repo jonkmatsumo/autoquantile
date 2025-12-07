@@ -5,9 +5,9 @@ import seaborn as sns
 from src.app.caching import load_data_cached as load_data
 
 def render_data_analysis_ui() -> None:
+    """Renders the data analysis dashboard."""
     st.header("Data Analysis")
     
-    # 1. Data Loading / Retrieval
     df = None
     if "training_data" in st.session_state:
         df = st.session_state["training_data"]
@@ -31,7 +31,6 @@ def render_data_analysis_ui() -> None:
     if df is None:
         return
 
-    # 2. Overview
     st.subheader("Overview")
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Samples", len(df))
@@ -44,7 +43,6 @@ def render_data_analysis_ui() -> None:
         
     st.markdown("---")
         
-    # 3. salary Distributions
     st.subheader("Salary Distributions")
     
     salary_cols = [c for c in ["BaseSalary", "TotalComp", "Stock", "Bonus"] if c in df.columns]
@@ -58,13 +56,11 @@ def render_data_analysis_ui() -> None:
         ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"${x:,.0f}"))
         st.pyplot(fig)
         
-        # Stats
         st.write("Statistics:")
         st.dataframe(df[target].describe().T)
     
     st.markdown("---")
 
-    # 4. Categorical Breakdown
     st.subheader("Categorical Breakdown")
     
     c1, c2 = st.columns(2)
@@ -79,10 +75,8 @@ def render_data_analysis_ui() -> None:
         loc_counts = df["Location"].value_counts().head(20)
         st.bar_chart(loc_counts)
         
-    # 5. Correlations (Numerical)
     st.subheader("Correlations")
     num_cols = ["YearsOfExperience", "YearsAtCompany"] + salary_cols
-    # Filter only available columns
     avail_num_cols = [c for c in num_cols if c in df.columns]
     
     if len(avail_num_cols) > 1:

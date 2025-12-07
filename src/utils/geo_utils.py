@@ -12,20 +12,16 @@ class GeoMapper:
         self.targets: Dict[str, int] = self.config["mappings"]["location_targets"]
         self.settings: Dict[str, Any] = self.config.get("location_settings", {"max_distance_km": 50})
         
-        # Determine cache path
         env_path = os.environ.get("SALARY_CACHE_FILE")
         if env_path:
             self.cache_file = os.path.abspath(os.path.expanduser(env_path))
         else:
-            # Default to user home directory
             home_dir = os.path.expanduser("~")
             app_dir = os.path.join(home_dir, ".salary_forecast")
             self.cache_file = os.path.join(app_dir, "city_cache.json")
             
-        # Ensure directory exists
         os.makedirs(os.path.dirname(self.cache_file), exist_ok=True)
         
-        # Migration: If local cache exists and new cache doesn't, copy it
         local_cache = "city_cache.json"
         if os.path.exists(local_cache) and not os.path.exists(self.cache_file):
             print(f"Migrating local cache from {local_cache} to {self.cache_file}...")
@@ -38,10 +34,7 @@ class GeoMapper:
         self.cache: Dict[str, Tuple[float, float]] = self._load_cache()
         self._init_geolocator()
         
-        # O(1) cache for zone lookups
         self.zone_cache: Dict[str, int] = {}
-        
-        # Pre-fetch target coordinates if not in cache
         self.target_coords: Dict[str, Tuple[float, float]] = {}
         self._init_targets()
 
@@ -50,22 +43,18 @@ class GeoMapper:
 
     def __getstate__(self) -> Dict[str, Any]:
         state = self.__dict__.copy()
-        # Remove unpicklable entries.
         if 'geolocator' in state:
             del state['geolocator']
         return state
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         self.__dict__.update(state)
-        # Restore unpicklable entries.
         self._init_geolocator()
 
     def _load_cache(self) -> Dict[str, Tuple[float, float]]:
         if os.path.exists(self.cache_file):
             try:
                 with open(self.cache_file, "r") as f:
-                    # JSON loads tuples as lists, convert back if needed, 
-                    # but simple json load is fine for now as we cast to tuple later
                     data = json.load(f)
                     return {k: tuple(v) for k, v in data.items()}
             except json.JSONDecodeError:
@@ -77,28 +66,25 @@ class GeoMapper:
             json.dump(self.cache, f, indent=4)
 
     def _get_coords(self, city: str) -> Optional[Tuple[float, float]]:
-        # Check cache first
         if city in self.cache:
             return tuple(self.cache[city])
         
-        # Geocode with retries
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                location = self.geolocator.geocode(city, timeout=10) # Increased timeout
+                location = self.geolocator.geocode(city, timeout=10)
                 if location:
                     coords = (location.latitude, location.longitude)
                     self.cache[city] = coords
                     self._save_cache()
-                    time.sleep(1) # Respect rate limits
+                    time.sleep(1)
                     return coords
                 else:
-                    # If location is None, it's not a timeout, just not found.
                     print(f"City not found: {city}")
                     return None
             except Exception as e:
                 print(f"Error geocoding {city} (Attempt {attempt+1}/{max_retries}): {e}")
-                time.sleep(2 * (attempt + 1)) # Backoff: 2s, 4s, 6s
+                time.sleep(2 * (attempt + 1))
             
         return None
 
@@ -112,10 +98,17 @@ class GeoMapper:
                 print(f"Warning: Could not geocode target city {city}")
 
     def get_zone(self, input_city: Any) -> int:
+        """Determines the cost zone for a given city based on proximity to targets.
+
+        Args:
+            input_city (Any): The city name to look up.
+
+        Returns:
+            int: The cost zone (defaults to 4 if not found or unknown).
+        """
         if not isinstance(input_city, str):
-            return 4 # Default zone
+            return 4
             
-        # Check in-memory zone cache first (O(1))
         if input_city in self.zone_cache:
             return self.zone_cache[input_city]
             
@@ -137,6 +130,5 @@ class GeoMapper:
         if nearest_city and min_dist <= self.settings["max_distance_km"]:
             zone = self.targets[nearest_city]
             
-        # Cache the result
         self.zone_cache[input_city] = zone
         return zone
