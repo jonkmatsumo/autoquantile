@@ -4,12 +4,16 @@ import pandas as pd
 import sys
 import glob
 import plotext as plt
+import logging
+import argparse
 from rich.console import Console
 from rich.table import Table
 
+logger = logging.getLogger(__name__)
+
 def load_model(path):
     if not os.path.exists(path):
-        print(f"Error: Model file '{path}' not found.")
+        logger.error(f"Model file '{path}' not found.")
         sys.exit(1)
     
     with open(path, "rb") as f:
@@ -81,18 +85,30 @@ def get_ordinal_suffix(n):
     return f"{n}{suffix}"
 
 def main():
+    parser = argparse.ArgumentParser(description="Salary Forecasting Inference CLI")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
+    args = parser.parse_args()
+    
+    # Configure logging
+    log_level = logging.INFO if args.verbose else logging.WARNING
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%H:%M:%S'
+    )
+
     console = Console()
     console.print("[bold green]Welcome to the Salary Forecasting CLI[/bold green]")
     
     model_path = select_model(console)
-    console.print(f"Loading model from: [bold]{model_path}[/bold]")
+    logger.info(f"Loading model from: {model_path}")
     model = load_model(model_path)
     
     while True:
         try:
             input_df = collect_user_data()
             
-            console.print("\n[bold blue]Calculating prediction...[/bold blue]")
+            logger.info("Calculating prediction...")
             results = model.predict(input_df)
             
             # Dynamically add columns based on model quantiles
@@ -100,7 +116,7 @@ def main():
             quantile_labels = [get_ordinal_suffix(int(q * 100)) for q in quantiles]
 
             # Visualization
-            console.print("\n[bold blue]Visualizing Forecast...[/bold blue]")
+            logger.info("Visualizing Forecast...")
             plt.clear_figure()
             plt.title("Salary Forecast by Quantile")
             plt.xlabel("Quantile")
@@ -144,7 +160,7 @@ def main():
             console.print("\n[bold]Goodbye![/bold]")
             break
         except Exception as e:
-            console.print(f"[bold red]An error occurred: {e}[/bold red]")
+            logger.error(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()

@@ -2,7 +2,7 @@ lightgbm
 pandas
 numpy
 scikit-learn
-pytest
+
 xgboost
 geopy
 rich
