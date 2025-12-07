@@ -67,10 +67,12 @@ if page == "Train Model":
                     # We'll just show status updates.
                     
                     try:
-                        status_container.write("Initializing model...")
+                        status_text = status_container.empty()
+                        status_text.markdown("Status: **Initializing model...**")
+                        
                         forecaster = SalaryForecaster(config=config)
                         
-                        status_container.write("Training models...")
+                        status_text.markdown("Status: **Starting training...**")
                         
                         results_data = []
                         table_placeholder = status_container.empty()
@@ -78,7 +80,7 @@ if page == "Train Model":
                         def streamlit_callback(msg, data=None):
                             if data and data.get("stage") == "start":
                                 # Update current action label
-                                status_container.write(f"Training **{data['model_name']}**...")
+                                status_text.markdown(f"Status: **Training {data['model_name']}...**")
                             elif data and data.get("stage") == "cv_end":
                                  # Append to results
                                  model_name = data.get('model_name', 'Unknown')
@@ -108,10 +110,12 @@ if page == "Train Model":
                         
                         forecaster.train(df, callback=streamlit_callback)
                         
-                        status_container.write("Saving model...")
+                        status_text.markdown("Status: **Saving model...**")
                         with open(model_name, "wb") as f:
                             pickle.dump(forecaster, f)
                             
+                        status_text.markdown("Status: **Completed**")
+                        
                         # Show success message at the top
                         success_placeholder.success(f"Model saved as `{model_name}`")
                         
