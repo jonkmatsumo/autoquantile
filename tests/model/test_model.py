@@ -222,3 +222,58 @@ class TestConfigHyperparams(unittest.TestCase):
         # Test error on missing column
         with self.assertRaises(ValueError):
             SalaryForecaster._analyze_cv_results(cv_df, 'missing-metric')
+
+@patch("src.model.model.xgb")
+@patch("src.model.model.optuna")
+def test_tune(mock_optuna, mock_xgb):
+    # Mock Config
+    mock_config = {
+        "model": {
+            "targets": ["BaseSalary"],
+            "quantiles": [0.5],
+            "features": [{"name": "Year", "monotone_constraint": 0}],
+            "hyperparameters": {"training": {}} # Empty initially
+        },
+        "mappings": {"levels": {"E3": 0}, "location_targets": {}},
+        "location_settings": {"max_distance_km": 50}
+    }
+    
+    with patch("src.model.model.get_config", return_value=mock_config):
+        forecaster = SalaryForecaster()
+        
+        # Mock Data
+        df = pd.DataFrame({
+            "Level": ["E3"], 
+            "Location": ["NY"],
+            "Year": [2023], 
+            "Date": ["2023-01-01"],
+            "BaseSalary": [100000]
+        })
+        
+        # Mock xgb.cv behavior
+        # It returns a dataframe with 'test-quantile-mean'
+        mock_cv_results = pd.DataFrame({"test-quantile-mean": [0.5, 0.4, 0.6]})
+        mock_xgb.cv.return_value = mock_cv_results
+        
+        # Mock Optuna Study
+        mock_study = MagicMock()
+        mock_optuna.create_study.return_value = mock_study
+        
+        # Verify optimize called
+        
+        # Mock best_params
+        mock_study.best_params = {"eta": 0.15, "max_depth": 7}
+        mock_study.best_value = 0.4
+        
+        best_params = forecaster.tune(df, n_trials=5)
+        
+        # Verify optimize called
+        mock_optuna.create_study.assert_called_once()
+        mock_study.optimize.assert_called_once()
+        
+        # Verify config updated
+        assert forecaster.model_config["hyperparameters"]["training"]["eta"] == 0.15
+        assert forecaster.model_config["hyperparameters"]["training"]["max_depth"] == 7
+        
+        # Verify return value
+        assert best_params == {"eta": 0.15, "max_depth": 7}

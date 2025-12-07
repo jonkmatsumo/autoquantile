@@ -14,12 +14,11 @@ from src.model.model import SalaryForecaster
 from src.utils.data_utils import load_data
 from src.utils.config_loader import load_config
 
-def get_input(console, prompt, default=None):
-    prompt_str = f"{prompt} [default: {default}]: " if default else f"{prompt}: "
-    user_input = console.input(prompt_str).strip()
-    return user_input if user_input else default
 
-def train_workflow(csv_path, config_path, output_path, console):
+import argparse
+import sys
+
+def train_workflow(csv_path, config_path, output_path, console, do_tune=False, num_trials=20):
     if not os.path.exists(csv_path):
         console.print(f"[bold red]Error: {csv_path} not found.[/bold red]")
         return
@@ -29,8 +28,6 @@ def train_workflow(csv_path, config_path, output_path, console):
         load_config(config_path)
 
     # Create layout elements
-
-
     status_text = Text("Status: Preparing...", style="bold blue")
     
     results_table = Table(box=box.SIMPLE, show_header=True, header_style="bold magenta")
@@ -58,6 +55,12 @@ def train_workflow(csv_path, config_path, output_path, console):
         with contextlib.redirect_stdout(io.StringIO()):
              forecaster = SalaryForecaster()
         
+        # Tuning Phase
+        if do_tune:
+            status_text.plain = f"Status: Tuning hyperparameters (Trials={num_trials})..."
+            best_params = forecaster.tune(df, n_trials=num_trials)
+            console.print(f"[dim]Best Params: {best_params}[/dim]")
+        
         status_text.plain = "Status: Starting training..."
         
         # Callback to handle rich output
@@ -84,8 +87,6 @@ def train_workflow(csv_path, config_path, output_path, console):
                 results_table.add_row(component, percentile, best_round, metric, best_score)
                 
             elif data and data.get("stage") == "cv_start":
-                # Maybe too fast to show "Running CV" for each?
-                # We can update status if we want
                 pass
                 
         forecaster.train(df, callback=console_callback)
@@ -121,16 +122,32 @@ def main():
     console = Console()
     console.print("[bold green]Salary Forecasting Training CLI[/bold green]")
     
-    csv_path = get_input(console, "Input CSV path", "salaries-list.csv")
-    config_path = get_input(console, "Config JSON path", "config.json")
-    output_path = get_input(console, "Output model path", "salary_model.pkl")
+    parser = argparse.ArgumentParser(description="Train Salary Forecast Model")
+    parser.add_argument("--csv", default="salaries-list.csv", help="Path to training CSV")
+    parser.add_argument("--config", default="config.json", help="Path to config JSON")
+    parser.add_argument("--output", default="salary_model.pkl", help="Path to save model")
+    parser.add_argument("--tune", action="store_true", help="Enable Optuna hyperparameter tuning")
+    parser.add_argument("--num-trials", type=int, default=20, help="Number of tuning trials")
+    
+    # We check if args are provided. If not, we might want interactive?
+    # But usually argparse handles --help or default usage.
+    # To preserve backward compability or "interactive feel", we could check sys.argv.
+    # But let's standardize on flags for now as requested.
+    
+    args = parser.parse_args()
     
     try:
-        train_workflow(csv_path, config_path, output_path, console)
+        train_workflow(
+            args.csv, 
+            args.config, 
+            args.output, 
+            console, 
+            do_tune=args.tune, 
+            num_trials=args.num_trials
+        )
         console.print(f"\n[bold green]Training workflow completed![/bold green]")
     except Exception as e:
         console.print(f"[bold red]Training failed: {e}[/bold red]")
-
         traceback.print_exc()
 
 if __name__ == "__main__":

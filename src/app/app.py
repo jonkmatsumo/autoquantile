@@ -59,6 +59,12 @@ elif page == "Train Model":
         st.subheader("Settings")
         model_name = st.text_input("Output Model Name", value="salary_model_web.pkl")
         
+        do_tune = st.checkbox("Enable Auto-Tuning (Optuna)", value=False, help="Optimize hyperparameters using Bayesian search (slower).")
+        if do_tune:
+            num_trials = st.number_input("Number of Trials", min_value=5, value=20, step=5, help="More trials = better results but longer wait.")
+        else:
+            num_trials = 20
+        
     with col2:
         st.subheader("Data & Training")
         uploaded_file = st.file_uploader("Upload Training CSV", type=["csv"])
@@ -95,6 +101,13 @@ elif page == "Train Model":
                                 status_text.markdown("Status: **Initializing model...**")
                                 
                                 forecaster = SalaryForecaster(config=config)
+                                
+                                if do_tune:
+                                    status_text.markdown(f"Status: **Tuning hyperparameters ({num_trials} trials)...**")
+                                    # Use a spinner for the tuning phase since it blocks
+                                    with st.spinner(f"Running Optuna optimization ({num_trials} trials)..."):
+                                        best_params = forecaster.tune(df, n_trials=num_trials)
+                                        st.write("Best Hyperparameters:", best_params)
                                 
                                 status_text.markdown("Status: **Starting training...**")
                                 

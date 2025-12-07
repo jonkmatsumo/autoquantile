@@ -1,4 +1,5 @@
 import xgboost as xgb
+import optuna
 import pandas as pd
 import numpy as np
 from src.model.preprocessing import LevelEncoder, LocationEncoder, SampleWeighter
@@ -127,6 +128,76 @@ class SalaryForecaster:
 
                 model = xgb.train(params, dtrain, num_boost_round=best_round)
                 self.models[model_name] = model
+
+    def tune(self, df, n_trials=20, timeout=None):
+        """
+        Runs Optuna optimization to find best hyperparameters.
+        Updates self.model_config with the best parameters found.
+        
+        Args:
+            df (pd.DataFrame): Training data.
+            n_trials (int): Number of trials.
+            timeout (int): Timeout in seconds.
+            
+        Returns:
+            dict: Best parameters found.
+        """
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        
+        X = self._preprocess(df)
+        weights = self.weighter.transform(df["Date"])
+        
+        # Tune on the first target and median (or first) quantile
+        target = self.targets[0]
+        y = df[target]
+        q_tune = 0.5 if 0.5 in self.quantiles else self.quantiles[0]
+        
+        constraints = [f["monotone_constraint"] for f in self.features_config]
+        monotone_constraints = str(tuple(constraints))
+        
+        dtrain = xgb.DMatrix(X, label=y, weight=weights)
+        
+        def objective(trial):
+            params = {
+                "objective": "reg:quantileerror",
+                "tree_method": "hist",
+                "verbosity": 0,
+                "quantile_alpha": q_tune,
+                "monotone_constraints": monotone_constraints,
+                
+                # Search Space
+                "eta": trial.suggest_float("eta", 0.01, 0.3),
+                "max_depth": trial.suggest_int("max_depth", 3, 10),
+                "alpha": trial.suggest_float("alpha", 0.0, 10.0),
+                "subsample": trial.suggest_float("subsample", 0.5, 1.0),
+                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0)
+            }
+            
+            cv_results = xgb.cv(
+                params,
+                dtrain,
+                num_boost_round=100,
+                nfold=3,
+                early_stopping_rounds=10,
+                metrics={'quantile'},
+                seed=42,
+                verbose_eval=False
+            )
+            
+            score = cv_results['test-quantile-mean'].min()
+            return score
+            
+        study = optuna.create_study(direction="minimize")
+        study.optimize(objective, n_trials=n_trials, timeout=timeout)
+        
+        best_params = study.best_params
+        
+        # Update config
+        hyperparams = self.model_config.setdefault("hyperparameters", {})
+        train_params = hyperparams.setdefault("training", {})
+        train_params.update(best_params)
+        
+        return best_params
                 
     def predict(self, X_input):
         """

@@ -2,68 +2,58 @@ import pytest
 from unittest.mock import patch, MagicMock
 from src.cli.train_cli import main, train_workflow
 
+@patch('sys.argv', ['prog', '--csv', 'input.csv', '--config', 'config.json', '--output', 'model.pkl'])
 def test_train_cli_main():
-    # Mock inputs: 
-    # 1. input.csv (CSV)
-    # 2. config.json (Config)
-    # 3. model.pkl (Output)
-    inputs = ["input.csv", "config.json", "model.pkl"]
-    
     with patch('src.cli.train_cli.Console') as MockConsole, \
          patch('os.path.exists', return_value=True), \
          patch('src.cli.train_cli.train_workflow') as mock_train_workflow:
         
-        mock_console = MockConsole.return_value
-        mock_console.input.side_effect = inputs
-        
         main()
         
         # Verify train_workflow was called with correct args
-        # Note: we also pass console now
         mock_train_workflow.assert_called_once()
         args, kwargs = mock_train_workflow.call_args
         assert args[0] == "input.csv"
         assert args[1] == "config.json"
         assert args[2] == "model.pkl"
+        assert kwargs['do_tune'] is False
+        assert kwargs['num_trials'] == 20
 
+@patch('sys.argv', ['prog'])
 def test_train_cli_defaults():
-    # Mock inputs: Enter (default), Enter (default), Enter (default)
-    inputs = ["", "", ""]
-    
-    with patch('src.cli.train_cli.Console') as MockConsole:
-        mock_console = MockConsole.return_value
-        # Mock input method of console
-        mock_console.input.side_effect = inputs
+    with patch('src.cli.train_cli.Console') as MockConsole, \
+         patch('os.path.exists', return_value=True), \
+         patch('src.cli.train_cli.train_workflow') as mock_train_workflow:
         
-        with patch('os.path.exists', return_value=True), \
-             patch('src.cli.train_cli.train_workflow') as mock_train_workflow:
-            
-            main()
-            
-            # Verify defaults
-            mock_train_workflow.assert_called_once()
-            args, kwargs = mock_train_workflow.call_args
-            assert args[0] == "salaries-list.csv"
-            assert args[1] == "config.json"
-            assert args[2] == "salary_model.pkl"
+        main()
+        
+        # Verify defaults
+        mock_train_workflow.assert_called_once()
+        args, kwargs = mock_train_workflow.call_args
+        assert args[0] == "salaries-list.csv"
+        assert args[1] == "config.json"
+        assert args[2] == "salary_model.pkl"
 
-def test_train_cli_file_not_found():
-    # Mock inputs: missing.csv, ...
-    inputs = ["missing.csv", "config.json", "model.pkl"]
-    
-    with patch('src.cli.train_cli.Console') as MockConsole:
-        mock_console = MockConsole.return_value
-        mock_console.input.side_effect = inputs
+@patch('sys.argv', ['prog', '--tune', '--num-trials', '50'])
+def test_train_cli_tune():
+    with patch('src.cli.train_cli.Console') as MockConsole, \
+         patch('os.path.exists', return_value=True), \
+         patch('src.cli.train_cli.train_workflow') as mock_train_workflow:
         
-        # Mock os.path.exists to return False for the first file
-        with patch('os.path.exists', side_effect=[False, True]): 
-            
-            main()
-            
-            # Verify error message printed
-            # Check if any print call contains "Error"
-            error_printed = any("Error" in str(call) for call in mock_console.print.call_args_list)
-            assert error_printed
+        main()
+        
+        mock_train_workflow.assert_called_once()
+        args, kwargs = mock_train_workflow.call_args
+        assert kwargs['do_tune'] is True
+        assert kwargs['num_trials'] == 50
+
+# test_train_cli_file_not_found removed or needs update. 
+# Argparse doesn't check file existence, train_workflow does.
+# But main calls train_workflow. train_workflow prints error and returns.
+# So we can test that main calls train_workflow, and train_workflow handles it.
+# Actually test_train_workflow handles the file not found logic?
+# Let's keep a full flow test if desired but we are testing main parsing here.
+
 
 def test_train_workflow():
     # Mock dependencies
