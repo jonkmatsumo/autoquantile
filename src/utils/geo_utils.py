@@ -10,7 +10,30 @@ class GeoMapper:
         self.config = get_config()
         self.targets = self.config["mappings"]["location_targets"]
         self.settings = self.config.get("location_settings", {"max_distance_km": 50})
-        self.cache_file = "city_cache.json"
+        
+        # Determine cache path
+        env_path = os.environ.get("SALARY_CACHE_FILE")
+        if env_path:
+            self.cache_file = os.path.abspath(os.path.expanduser(env_path))
+        else:
+            # Default to user home directory
+            home_dir = os.path.expanduser("~")
+            app_dir = os.path.join(home_dir, ".salary_forecast")
+            self.cache_file = os.path.join(app_dir, "city_cache.json")
+            
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(self.cache_file), exist_ok=True)
+        
+        # Migration: If local cache exists and new cache doesn't, copy it
+        local_cache = "city_cache.json"
+        if os.path.exists(local_cache) and not os.path.exists(self.cache_file):
+            print(f"Migrating local cache from {local_cache} to {self.cache_file}...")
+            try:
+                with open(local_cache, "r") as src, open(self.cache_file, "w") as dst:
+                    dst.write(src.read())
+            except Exception as e:
+                print(f"Failed to migrate cache: {e}")
+
         self.cache = self._load_cache()
         self._init_geolocator()
         
