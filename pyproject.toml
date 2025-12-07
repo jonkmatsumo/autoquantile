@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "salary-forecast"
+version = "0.1.0"
+description = "A salary forecasting engine."
+readme = "README.md"
+authors = [
+    { name = "Jonathan", email = "jonkmatsumo@gmail.com" }
+]
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "lightgbm",
+    "pandas",
+    "numpy",
+    "scikit-learn",
+    "xgboost",
+    "geopy",
+    "rich",
+    "plotext",
+    "streamlit",
+    "watchdog",
+    "matplotlib",
+    "urllib3<2.0.0",
+    "optuna"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest"
+]
+
+[project.scripts]
+salary-forecast-train = "src.cli.train_cli:main"
+salary-forecast-infer = "src.cli.inference_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = "."
+addopts = "-v"

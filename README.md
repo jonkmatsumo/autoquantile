@@ -2,6 +2,11 @@
 
 A machine learning system to predict compensation distributions (Base Salary, Stock, Bonus, Total Comp) based on candidate attributes. It uses **XGBoost** with Quantile Regression. The model is highly configurable, allowing users to define exact percentiles to forecast, enforce monotonic constraints, and customize target definitions.
 
+Key features include:
+- **Auto-Tuning**: Integrated Hyperparameter Optimization using **Optuna** to automatically find the best model parameters.
+- **Robustness**: **Outlier Detection** (IQR) to filter extreme data points and improve model generalization.
+- **Proximity Matching**: Geo-spatial grouping of cities into cost zones.
+
 ## Installation
 
 1.  Create a virtual environment (optional but recommended):
@@ -9,9 +14,10 @@ A machine learning system to predict compensation distributions (Base Salary, St
     python3 -m venv .venv
     source .venv/bin/activate
     ```
-2.  Install dependencies:
     ```bash
-    pip install -r requirements.txt
+    pip install -e .
+    # Or for development (includes test dependencies):
+    pip install -e ".[dev]"
     ```
 
 ## Usage
@@ -31,7 +37,8 @@ This launches a dashboard where you can:
 To train the model via terminal:
 
 ```bash
-python3 -m src.cli.train_cli
+salary-forecast-train
+# Or: python3 -m src.cli.train_cli
 ```
 
 You can specify the input CSV, config file, and output model path.
@@ -40,7 +47,8 @@ You can specify the input CSV, config file, and output model path.
 To run the interactive CLI for making predictions:
 
 ```bash
-python3 -m src.cli.inference_cli
+salary-forecast-infer
+# Or: python3 -m src.cli.inference_cli
 ```
 
 Follow the prompts to select a model and enter candidate details.
@@ -133,10 +141,3 @@ Below is a complete example of the configuration structure. valid JSON format:
     }
 }
 ```
-
-## Proximity Matching
-
-The system uses `geopy` to automatically map input locations to the nearest target city defined in the config.
-- **Dynamic Matching**: "Newark" maps to "New York" if it is within the configured `max_distance_km` (default 50km).
-- **Caching**: Geocoding results are cached locally to speed up subsequent runs and reduce API usage.
-- **O(1) Lookup**: Once a city is processed, its zone is cached in memory for instant lookup.
