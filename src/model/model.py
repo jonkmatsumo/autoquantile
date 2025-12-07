@@ -12,6 +12,7 @@ class SalaryForecaster:
             config = get_config()
         
         model_config = config["model"]
+        self.model_config = model_config
         
         self.targets = model_config["targets"]
         self.quantiles = model_config["quantiles"]
@@ -48,6 +49,20 @@ class SalaryForecaster:
         constraints = [f["monotone_constraint"] for f in self.features_config]
         monotone_constraints = str(tuple(constraints))
         
+        # Get defaults or user config for hyperparams
+        hyperparams = self.model_config.get("hyperparameters", {})
+        train_params_config = hyperparams.get("training", {
+            "objective": "reg:quantileerror",
+            "tree_method": "hist",
+            "verbosity": 0
+        })
+        cv_params_config = hyperparams.get("cv", {
+            "num_boost_round": 100,
+            "nfold": 5,
+            "early_stopping_rounds": 10,
+            "verbose_eval": False
+        })
+
         for target in self.targets:
             y = df[target]
             
@@ -59,13 +74,12 @@ class SalaryForecaster:
                     print(f"Training {model_name}...")
                 
                 # XGBoost Quantile Regression parameters
-                params = {
-                    "objective": "reg:quantileerror",
+                # Merge dynamic params with config params
+                params = train_params_config.copy()
+                params.update({
                     "quantile_alpha": q,
                     "monotone_constraints": monotone_constraints,
-                    "verbosity": 0,
-                    "tree_method": "hist"
-                }
+                })
                 
                 dtrain = xgb.DMatrix(X, label=y, weight=weights)
                 
@@ -76,12 +90,12 @@ class SalaryForecaster:
                 cv_results = xgb.cv(
                     params,
                     dtrain,
-                    num_boost_round=100,
-                    nfold=5,
-                    early_stopping_rounds=10,
+                    num_boost_round=cv_params_config.get("num_boost_round", 100),
+                    nfold=cv_params_config.get("nfold", 5),
+                    early_stopping_rounds=cv_params_config.get("early_stopping_rounds", 10),
                     metrics={'quantile'}, # Use quantile error metric
                     seed=42,
-                    verbose_eval=False
+                    verbose_eval=cv_params_config.get("verbose_eval", False)
                 )
                 
                 # Analyze results

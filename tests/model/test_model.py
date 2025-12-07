@@ -1,4 +1,6 @@
 import pytest
+import unittest
+from unittest.mock import MagicMock, patch
 import pandas as pd
 import numpy as np
 from src.model.model import SalaryForecaster
@@ -116,3 +118,90 @@ def test_location_impact(trained_model):
     
     print(f"\nLocation Check: NY={pred_ny}, Austin={pred_austin}")
     assert pred_ny > pred_austin, "NY salary should be higher than Austin"
+class TestConfigHyperparams(unittest.TestCase):
+    def setUp(self):
+        # Sample data
+        self.df = pd.DataFrame({
+            "Level": ["E3", "E4"],
+            "Location": ["New York", "San Francisco"],
+            "YearsOfExperience": [1, 2],
+            "YearsAtCompany": [0, 1],
+            "Date": ["2023-01-01", "2023-01-02"],
+            "BaseSalary": [100000, 120000]
+        })
+        
+        # Minimal config with custom hyperparams
+        self.custom_config = {
+            "mappings": {
+                "levels": {"E3": 0, "E4": 1},
+                "location_targets": {"New York": 1, "San Francisco": 1}
+            },
+            "location_settings": {"max_distance_km": 50},
+            "model": {
+                "targets": ["BaseSalary"],
+                "quantiles": [0.5],
+                "features": [
+                     {"name": "Level_Enc", "monotone_constraint": 1}
+                ],
+                "hyperparameters": {
+                    "training": {
+                        "objective": "reg:quantileerror",
+                        "max_depth": 7,  # Custom value to check
+                        "eta": 0.01      # Custom value to check
+                    },
+                    "cv": {
+                        "num_boost_round": 10,
+                        "nfold": 2
+                    }
+                }
+            }
+        }
+
+    @patch("src.model.model.xgb.train")
+    @patch("src.model.model.xgb.cv")
+    @patch("src.model.model.xgb.DMatrix")
+    def test_custom_hyperparams_passed_to_xgb(self, mock_dmatrix, mock_cv, mock_train):
+        # Mock cv results
+        mock_cv.return_value = pd.DataFrame({'test-quantile-mean': [0.5, 0.4, 0.3]})
+        
+        forecaster = SalaryForecaster(config=self.custom_config)
+        forecaster.train(self.df)
+        
+        # Check if train was called with custom params
+        # We need to inspect the call to xgb.train
+        # Call args: (params, dtrain, num_boost_round)
+        
+        self.assertTrue(mock_train.called)
+        
+        # Get arguments of the first call
+        call_args = mock_train.call_args
+        params_arg = call_args[0][0]
+        
+        # Verify custom params exist
+        self.assertEqual(params_arg.get("max_depth"), 7)
+        self.assertEqual(params_arg.get("eta"), 0.01)
+        
+        # Verify merged params exist
+        self.assertEqual(params_arg.get("quantile_alpha"), 0.5)
+
+    @patch("src.model.model.xgb.train")
+    @patch("src.model.model.xgb.cv")
+    @patch("src.model.model.xgb.DMatrix")
+    def test_custom_cv_params_passed(self, mock_dmatrix, mock_cv, mock_train):
+        mock_cv.return_value = pd.DataFrame({'test-quantile-mean': [0.5]})
+        
+        forecaster = SalaryForecaster(config=self.custom_config)
+        forecaster.train(self.df)
+        
+        self.assertTrue(mock_cv.called)
+        
+        # Check kwargs
+        call_kwargs = mock_cv.call_args[1]
+        
+        # Or checking positional/keyword args depending on implementation
+        # The implementation passes arguments as kwargs or positional?
+        # cv_results = xgb.cv(params, dtrain, num_boost_round=..., nfold=...)
+        
+        # Let's inspect call_kwargs
+        self.assertEqual(call_kwargs.get("num_boost_round"), 10)
+        self.assertEqual(call_kwargs.get("nfold"), 2)

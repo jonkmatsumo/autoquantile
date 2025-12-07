@@ -42,7 +42,7 @@
             0.9
         ],
         "sample_weight_k": 1.0,
-        "features": [
+        "hyperparameters": {"training": {"objective": "reg:quantileerror", "tree_method": "hist", "verbosity": 0}, "cv": {"num_boost_round": 100, "nfold": 5, "early_stopping_rounds": 10, "verbose_eval": false}}, "features": [
             {
                 "name": "Level_Enc",
                 "monotone_constraint": 1

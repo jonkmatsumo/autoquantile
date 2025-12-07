@@ -99,6 +99,9 @@ Configures the XGBoost model and feature engineering.
     - `1`: Increasing constraint (higher feature value -> higher prediction).
     - `0`: No constraint.
     - `-1`: Decreasing constraint.
+- **`hyperparameters`** (Optional): XGBoost parameters for training and cross-validation. If omitted, default values are used.
+  - **`training`**: Parameters passed to `xgb.train` (e.g., `max_depth`, `eta`).
+  - **`cv`**: Parameters passed to `xgb.cv` (e.g., `num_boost_round`, `nfold`).
 
 ### Configuration Template
 
@@ -117,7 +120,16 @@ Below is a complete example of the configuration structure. valid JSON format:
         "sample_weight_k": 1.0,
         "features": [
             {"name": "Level_Enc", "monotone_constraint": 1}
-        ]
+        ],
+        "hyperparameters": {
+            "training": {
+                "objective": "reg:quantileerror",
+                "max_depth": 6
+            },
+            "cv": {
+                "num_boost_round": 100
+            }
+        }
     }
 }
 ```
