@@ -116,6 +116,7 @@ class SalaryForecaster:
                 if callback:
                     data = {
                         "stage": "cv_end",
+                        "model_name": model_name,
                         "best_round": best_round,
                         "best_score": best_score,
                         "metric_name": metric_name

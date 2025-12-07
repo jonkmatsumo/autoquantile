@@ -72,17 +72,38 @@ if page == "Train Model":
                         
                         status_container.write("Training models...")
                         
+                        results_data = []
+                        table_placeholder = status_container.empty()
+                        
                         def streamlit_callback(msg, data=None):
                             if data and data.get("stage") == "start":
+                                # Update current action label
                                 status_container.write(f"Training **{data['model_name']}**...")
                             elif data and data.get("stage") == "cv_end":
-                                 # Show detailed stats
-                                 metric = data.get('metric_name')
-                                 best_round = data.get('best_round')
-                                 score = data.get('best_score')
-                                 status_container.write(f"  - Best Round: {best_round}, {metric}: {score:.4f}")
+                                 # Append to results
+                                 model_name = data.get('model_name', 'Unknown')
+                                 # Parse model name (Target_pXX)
+                                 if '_p' in model_name:
+                                     parts = model_name.rsplit('_', 1)
+                                     component = parts[0]
+                                     percentile = parts[1] # e.g. p10
+                                 else:
+                                     component = model_name
+                                     percentile = "-"
+
+                                 results_data.append({
+                                     "Component": component,
+                                     "Percentile": percentile,
+                                     "Best Round": data.get('best_round'),
+                                     "Metric": data.get('metric_name'),
+                                     "Score": f"{data.get('best_score'):.4f}"
+                                 })
+
+                                 if results_data:
+                                     df_res = pd.DataFrame(results_data)
+                                     # Deprecation fix: use_container_width=True -> width="stretch"
+                                     table_placeholder.dataframe(df_res, width="stretch")
                             elif data and data.get("stage") == "cv_start":
-                                 # Optional: could update status label but might be too fast
                                  pass
                         
                         forecaster.train(df, callback=streamlit_callback)
