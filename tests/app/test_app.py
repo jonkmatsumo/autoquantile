@@ -37,7 +37,8 @@ class TestStreamlitApp(unittest.TestCase):
         self.assertEqual(at.header[0].value, "Train New Model")
         
         # Check we have config text area (button only shows after upload)
-        self.assertTrue(len(at.text_area) > 0)
+        # Check we have model name input
+        self.assertTrue(len(at.text_input) >= 1)
 
     def test_navigation_inference(self):
         """Verify navigation to Inference page."""

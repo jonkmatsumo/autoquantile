@@ -16,6 +16,7 @@ if root_dir not in sys.path:
     sys.path.append(root_dir)
 
 from src.model.model import SalaryForecaster
+from src.app.config_ui import render_config_ui
 from src.utils.config_loader import get_config
 from src.utils.data_utils import load_data
 
@@ -36,9 +37,10 @@ if page == "Train Model":
         st.subheader("Settings")
         model_name = st.text_input("Output Model Name", value="salary_model_web.pkl")
         
-        # Determine valid overrides via JSON
+        # Determine valid overrides via UI
         current_config = get_config()
-        config_str = st.text_area("Configuration (JSON)", value=json.dumps(current_config, indent=2), height=400)
+        # Render the UI and get the updated config dict
+        updated_config = render_config_ui(current_config)
         
     with col2:
         st.subheader("Data & Training")
@@ -53,12 +55,8 @@ if page == "Train Model":
             
             if st.button("Start Training", type="primary"):
                 try:
-                    # Parse config
-                    try:
-                        config = json.loads(config_str)
-                    except json.JSONDecodeError as e:
-                        st.error(f"Invalid JSON configuration: {e}")
-                        st.stop()
+                    # Use the config from the UI
+                    config = updated_config
                         
                     success_placeholder = st.empty()
                     status_container = st.status("Training in progress...", expanded=True)
