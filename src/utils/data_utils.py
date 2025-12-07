@@ -37,7 +37,13 @@ def load_data(filepath: str) -> pd.DataFrame:
     df["YearsAtCompany"] = df["YearsAtCompany"].apply(clean_years)
     
     # Parse dates
-    df["Date"] = pd.to_datetime(df["Date"])
+    # format='mixed' allows parsing different formats in the same column (e.g. '2023-01-01', 'Jan 1, 2023')
+    # dayfirst=False is generally safer for US-centric tech salary data unless known otherwise
+    try:
+        df["Date"] = pd.to_datetime(df["Date"], errors='coerce', format='mixed')
+    except ValueError:
+        # Fallback for older pandas versions or extremely weird data
+        df["Date"] = pd.to_datetime(df["Date"], errors='coerce')
     
     # Ensure numeric targets
     targets = ["BaseSalary", "Stock", "Bonus", "TotalComp"]

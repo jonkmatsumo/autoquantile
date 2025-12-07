@@ -52,7 +52,8 @@ def test_render_location_settings_editor(sample_config):
         mock_st.subheader.assert_called_with("Location Settings")
         mock_st.slider.assert_called_with(
             "Max Distance (km) for Proximity Matching",
-            min_value=0, max_value=200, value=50, step=5
+            min_value=0, max_value=200, value=50, step=5,
+            help="Maximum distance in km to consider a candidate 'local' to a target city."
         )
         assert updated_settings == {"max_distance_km": 100}
 
