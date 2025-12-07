@@ -2,9 +2,17 @@ import pandas as pd
 import numpy as np
 import re
 
-def load_data(filepath):
+from typing import Union
+
+def load_data(filepath: str) -> pd.DataFrame:
     """
     Loads and cleans the salary data from CSV.
+
+    Args:
+        filepath (str): Path to the CSV file.
+
+    Returns:
+        pd.DataFrame: Cleaned dataframe with parsed dates and numeric columns.
     """
     df = pd.read_csv(filepath)
     
@@ -12,7 +20,8 @@ def load_data(filepath):
     # Level,TotalComp,BaseSalary,Stock,Bonus,YearsOfExperience,YearsAtCompany,Date,Location
     
     # Clean numeric columns that might have strings like "11+" or "5-10"
-    def clean_years(val):
+    def clean_years(val: Union[int, float, str]) -> float:
+        """Helper to parse year strings like '11+' or '5-10'."""
         if isinstance(val, (int, float)):
             return float(val)
         val = str(val).strip()

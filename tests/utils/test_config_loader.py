@@ -5,7 +5,14 @@ from src.utils.config_loader import load_config, get_config
 import src.utils.config_loader as config_loader_module
 
 def test_load_config_success():
-    mock_data = {"key": "value"}
+    mock_data = {
+        "mappings": {},
+        "location_settings": {},
+        "model": {
+            "targets": [],
+            "quantiles": []
+        }
+    }
     mock_json = json.dumps(mock_data)
     
     with patch("builtins.open", mock_open(read_data=mock_json)), \

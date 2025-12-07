@@ -24,9 +24,34 @@ def load_config(config_path="config.json"):
         raise FileNotFoundError(f"Config file not found at {config_path}")
 
     with open(config_path, "r") as f:
-        _CONFIG = json.load(f)
+        config = json.load(f)
+        
+    _validate_config(config)
+    _CONFIG = config
         
     return _CONFIG
+
+def _validate_config(config):
+    """
+    Validates the configuration dictionary structure.
+    
+    Args:
+        config (dict): The configuration dictionary.
+        
+    Raises:
+        ValueError: If required keys are missing.
+    """
+    required_keys = ["mappings", "location_settings", "model"]
+    for key in required_keys:
+        if key not in config:
+            raise ValueError(f"Config missing required key: '{key}'")
+            
+    # Validate model section
+    model_config = config["model"]
+    required_model_keys = ["targets", "quantiles"]
+    for key in required_model_keys:
+        if key not in model_config:
+            raise ValueError(f"Config['model'] missing required key: '{key}'")
 
 def get_config():
     """
