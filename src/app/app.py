@@ -90,10 +90,21 @@ def render_inference_ui() -> None:
                 
             res_df = pd.DataFrame(res_data)
             
-            # 1. Visualization (Interactive Bar Chart)
-            # Use 'Component' as index so Streamlit plots quantiles as series
-            chart_df = res_df.set_index("Component")
-            st.bar_chart(chart_df)
+            # 1. Visualization (Interactive Line Chart)
+            # We want X-axis = Percentiles (p10, p25...), Lines = Components
+            chart_df = res_df.set_index("Component").T
+            
+            # Sort index (percentiles) numerically to ensure correct order (e.g. p5 vs p10)
+            # Index is currently strings like "p10", "p25"
+            try:
+                # Extract integer part for sorting
+                sorted_index = sorted(chart_df.index, key=lambda x: int(x.replace("p", "")))
+                chart_df = chart_df.reindex(sorted_index)
+            except ValueError:
+                # Fallback if index format is unexpected
+                pass
+                
+            st.line_chart(chart_df)
             
             # 2. Table
             st.dataframe(res_df.style.format({c: "${:,.0f}" for c in res_df.columns if c != "Component"}))
@@ -128,6 +139,10 @@ def render_training_ui() -> None:
         num_trials = st.number_input("Number of Trials", 5, 100, 20)
         
     remove_outliers = st.checkbox("Remove Outliers (IQR)", value=True)
+    
+    display_charts = st.checkbox("Show Live Charts (Experimental)", value=False)
+    
+    custom_name = st.text_input("Model Output Filename (Optional)", placeholder="e.g. my_custom_model.pkl")
     
     if st.button("Start Training"):
         if df is None:
@@ -172,7 +187,13 @@ def render_training_ui() -> None:
             forecaster.train(df, callback=streamlit_callback, remove_outliers=remove_outliers)
             
             # Save
-            output_path = f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
+            if custom_name and custom_name.strip():
+                output_path = custom_name.strip()
+                if not output_path.endswith(".pkl"):
+                    output_path += ".pkl"
+            else:
+                output_path = f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
+                
             with open(output_path, "wb") as f:
                 pickle.dump(forecaster, f)
                 
