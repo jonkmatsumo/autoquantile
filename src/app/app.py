@@ -60,23 +60,46 @@ if page == "Train Model":
                         st.error(f"Invalid JSON configuration: {e}")
                         st.stop()
                         
+                    success_placeholder = st.empty()
                     status_container = st.status("Training in progress...", expanded=True)
                     
                     # Capture stdout? Streamlit doesn't easily show real-time stdout.
                     # We'll just show status updates.
                     
-                    status_container.write("Initializing model...")
-                    forecaster = SalaryForecaster(config=config)
-                    
-                    status_container.write("Training models...")
-                    forecaster.train(df)
-                    
-                    status_container.write("Saving model...")
-                    with open(model_name, "wb") as f:
-                        pickle.dump(forecaster, f)
+                    try:
+                        status_container.write("Initializing model...")
+                        forecaster = SalaryForecaster(config=config)
                         
-                    status_container.update(label="Training Complete!", state="complete", expanded=False)
-                    st.success(f"Model saved as `{model_name}`")
+                        status_container.write("Training models...")
+                        
+                        def streamlit_callback(msg, data=None):
+                            if data and data.get("stage") == "start":
+                                status_container.write(f"Training **{data['model_name']}**...")
+                            elif data and data.get("stage") == "cv_end":
+                                 # Show detailed stats
+                                 metric = data.get('metric_name')
+                                 best_round = data.get('best_round')
+                                 score = data.get('best_score')
+                                 status_container.write(f"  - Best Round: {best_round}, {metric}: {score:.4f}")
+                            elif data and data.get("stage") == "cv_start":
+                                 # Optional: could update status label but might be too fast
+                                 pass
+                        
+                        forecaster.train(df, callback=streamlit_callback)
+                        
+                        status_container.write("Saving model...")
+                        with open(model_name, "wb") as f:
+                            pickle.dump(forecaster, f)
+                            
+                        # Show success message at the top
+                        success_placeholder.success(f"Model saved as `{model_name}`")
+                        
+                        # Collapse status to show it as "Details" below
+                        status_container.update(label="Training Logic Completed", state="complete", expanded=False)
+                        
+                    except Exception as e:
+                        status_container.update(label="Training Failed", state="error", expanded=True)
+                        raise e
                     
                 except Exception as e:
                     st.error(f"Training failed: {e}")

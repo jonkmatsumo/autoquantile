@@ -94,7 +94,12 @@ def test_train_workflow():
         # Verify interactions
         mock_load_data.assert_called_once_with("test.csv")
         MockForecaster.assert_called_once()
-        mock_model.train.assert_called_once_with(mock_df, console=mock_console)
+        # Verify train was called (we can't easily assert the local callback function equality)
+        assert mock_model.train.call_count == 1
+        args, kwargs = mock_model.train.call_args
+        assert args[0] == mock_df
+        assert 'callback' in kwargs
+        assert callable(kwargs['callback'])
         
         # Verify pickle.dump was called
         mock_pickle_dump.assert_called_once()

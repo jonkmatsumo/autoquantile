@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from src.model.preprocessing import LevelEncoder, LocationEncoder, SampleWeighter
 from src.utils.config_loader import get_config
+from src.utils.training_utils import analyze_cv_results
 
 class SalaryForecaster:
     def __init__(self, config=None):
@@ -40,7 +41,16 @@ class SalaryForecaster:
         
         return X_proc[self.feature_names]
 
-    def train(self, df, console=None):
+    def train(self, df, callback=None):
+        """
+        Trains the XGBoost models.
+        
+        Args:
+            df (pd.DataFrame): Training data.
+            callback (callable, optional): function(status_msg, result_data=None).
+                                          status_msg is a string or formatted object.
+                                          result_data is a dict with extra info (like cv scores).
+        """
         X = self._preprocess(df)
         weights = self.weighter.transform(df["Date"])
         
@@ -68,8 +78,9 @@ class SalaryForecaster:
             
             for q in self.quantiles:
                 model_name = f"{target}_p{int(q*100)}"
-                if console:
-                    console.print(f"Training [bold]{model_name}[/bold]...")
+                
+                if callback:
+                    callback(f"Training {model_name}...", {"stage": "start", "model_name": model_name})
                 else:
                     print(f"Training {model_name}...")
                 
@@ -84,8 +95,8 @@ class SalaryForecaster:
                 dtrain = xgb.DMatrix(X, label=y, weight=weights)
                 
                 # Cross-validation
-                if console:
-                    console.print(f"  Running Cross-Validation for {model_name}...")
+                if callback:
+                    callback(f"Running Cross-Validation...", {"stage": "cv_start"})
                 
                 cv_results = xgb.cv(
                     params,
@@ -99,14 +110,17 @@ class SalaryForecaster:
                 )
                 
                 # Analyze results
-                # Metric name in cv_results will be test-quantile-mean
                 metric_name = 'test-quantile-mean'
-                best_round = cv_results[metric_name].argmin() + 1
-                best_score = cv_results[metric_name].min()
+                best_round, best_score = analyze_cv_results(cv_results, metric_name)
                 
-                if console:
-                    console.print(f"  [cyan]Optimal rounds: {best_round}, Best {metric_name}: {best_score:.4f}[/cyan]")
-                    console.print(f"  [dim]Training final model with {best_round} rounds...[/dim]")
+                if callback:
+                    data = {
+                        "stage": "cv_end",
+                        "best_round": best_round,
+                        "best_score": best_score,
+                        "metric_name": metric_name
+                    }
+                    callback(f"Best Round: {best_round}, Score: {best_score:.4f}", data)
                 else:
                     print(f"  Optimal rounds: {best_round}, Best {metric_name}: {best_score:.4f}")
 

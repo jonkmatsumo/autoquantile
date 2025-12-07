@@ -28,8 +28,24 @@ def train_workflow(csv_path, config_path, output_path, console):
     forecaster = SalaryForecaster()
     
     console.print("Training model...")
-    # Pass console to train method if we want rich output inside
-    forecaster.train(df, console=console)
+    
+    # Callback to handle rich output
+    def console_callback(msg, data=None):
+        if data and data.get("stage") == "start":
+            console.print(f"Training [bold]{data['model_name']}[/bold]...")
+        elif data and data.get("stage") == "cv_end":
+            metric = data.get('metric_name', 'metric')
+            best_round = data.get('best_round')
+            best_score = data.get('best_score')
+            console.print(f"  [cyan]Optimal rounds: {best_round}, Best {metric}: {best_score:.4f}[/cyan]")
+            console.print(f"  [dim]Training final model with {best_round} rounds...[/dim]")
+        elif data and data.get("stage") == "cv_start":
+            console.print(f"  {msg}")
+        else:
+             # Default fallback
+            pass
+
+    forecaster.train(df, callback=console_callback)
     
     console.print(f"Saving model to {output_path}...")
     with open(output_path, "wb") as f:
