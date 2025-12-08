@@ -5,6 +5,7 @@ import seaborn as sns
 from src.app.caching import load_data_cached as load_data
 from src.services.analytics_service import AnalyticsService
 from src.services.config_generator import ConfigGenerator
+from src.utils.env_loader import get_env_var
 
 def render_data_analysis_ui() -> None:
     """Renders the data analysis dashboard."""
@@ -57,7 +58,6 @@ def render_data_analysis_ui() -> None:
                 try:
                     if use_ai:
                         # Check API Key
-                        from src.utils.env_loader import get_env_var
                         key_name = "OPENAI_API_KEY" if provider == "openai" else "GEMINI_API_KEY"
                         if not get_env_var(key_name):
                              st.error(f"Missing {key_name} in environment variables.")
