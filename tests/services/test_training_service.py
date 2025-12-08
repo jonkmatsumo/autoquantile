@@ -41,4 +41,4 @@ class TestTrainingService(unittest.TestCase):
 
     def test_get_job_status_invalid(self):
         status = self.service.get_job_status("invalid_id")
-        self.assertNone(status)
+        self.assertIsNone(status)

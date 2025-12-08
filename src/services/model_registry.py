@@ -8,7 +8,7 @@ class SalaryForecasterWrapper(PythonModel):
     """Wrapper for MLflow persistence of SalaryForecaster."""
     def __init__(self, forecaster):
         self.forecaster = forecaster
-    def predict(self, context, model_input):
+    def predict(self, context, model_input: List[Any]):
         return self.forecaster.predict(model_input)
     def unwrap_python_model(self):
         return self.forecaster
@@ -34,8 +34,15 @@ class ModelRegistry:
             return []
         
         # Prepare a lightweight format for UI
-        # We return the actual dataframe or a list of dicts
-        return runs[["run_id", "start_time", "metrics.cv_mean_score"]].to_dict('records')
+        cols = ["run_id", "start_time"]
+        if "metrics.cv_mean_score" in runs.columns:
+            cols.append("metrics.cv_mean_score")
+        elif "metrics.cv_score" in runs.columns:
+             # Fallback if specific mean not logged? 
+             pass
+             
+        # Extract available columns
+        return runs[cols].to_dict('records')
 
     def load_model(self, run_id: str) -> SalaryForecaster:
         """Loads the 'model' artifact from the specified run."""
@@ -50,7 +57,7 @@ class ModelRegistry:
         # it might fail because SalaryForecaster isn't an sklearn estimator.
         # But we can assume the trainer logs it correctly.
         
-        return mlflow.pyfunc.load_model(model_uri).unwrap_python_model()
+        return mlflow.pyfunc.load_model(model_uri).unwrap_python_model().unwrap_python_model()
 
     def save_model(self, model: SalaryForecaster, run_name: str = None) -> None:
         """

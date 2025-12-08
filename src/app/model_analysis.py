@@ -19,7 +19,14 @@ def render_model_analysis_ui() -> None:
         return
 
     # Create display labels
-    run_options = {f"{r['start_time'].strftime('%Y-%m-%d %H:%M')} | CV:{r.get('metrics.cv_mean_score', 'N/A'):.4f} | ID:{r['run_id'][:8]}": r['run_id'] for r in runs}
+    # Create display labels
+    def fmt_score(x):
+        try:
+            return f"{float(x):.4f}"
+        except (ValueError, TypeError):
+            return str(x)
+            
+    run_options = {f"{r['start_time'].strftime('%Y-%m-%d %H:%M')} | CV:{fmt_score(r.get('metrics.cv_mean_score', 'N/A'))} | ID:{r['run_id'][:8]}": r['run_id'] for r in runs}
     
     selected_label = st.selectbox("Select Model Version", options=list(run_options.keys()))
     if not selected_label:

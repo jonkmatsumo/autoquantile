@@ -51,7 +51,9 @@ class TrainingService:
                 "status": "QUEUED",
                 "submitted_at": datetime.now(),
                 "logs": [],
-                "history": [], # New: Store structured events
+                "logs": [],
+                "history": [], 
+                "scores": [], # Track CV scores for aggregation
                 "result": None,
                 "error": None
             }
@@ -86,10 +88,10 @@ class TrainingService:
                         self._jobs[job_id]["history"].append(data)
                         # Log CV scores as metrics if available
                         if data.get("stage") == "cv_end":
-                            # We can't log metrics to MLflow safely from thread without active run context
-                            # But we will have active run context below!
+                            score = data.get("best_score")
+                            self._jobs[job_id]["scores"].append(score) # Track scores
                             try:
-                                mlflow.log_metric("cv_score", data.get("best_score"))
+                                mlflow.log_metric("cv_score", score)
                             except:
                                 pass # Ignore if no active run
                     
@@ -130,6 +132,12 @@ class TrainingService:
                 )
                 
                 # Log final metrics if available
+                scores = self._jobs[job_id].get("scores", [])
+                if scores:
+                    import numpy as np
+                    mean_score = np.mean(scores)
+                    mlflow.log_metric("cv_mean_score", mean_score)
+                
                 # mlflow.log_metric("final_mae", ...) # Forecaster doesn't expose test metrics yet
                 
                 with self._lock:

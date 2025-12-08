@@ -25,11 +25,35 @@ class TestModelRegistry(unittest.TestCase):
         self.assertEqual(len(models), 2)
         self.assertEqual(models[0]["run_id"], "run1")
 
+    @patch("src.services.model_registry.mlflow.search_runs")
+    def test_list_models_missing_col(self, mock_search):
+        # Mock dataframe WITHOUT metric column
+        mock_df = pd.DataFrame({
+            "run_id": ["run1"],
+            "start_time": [datetime(2023,1,1)],
+            "status": ["FINISHED"]
+        })
+        mock_search.return_value = mock_df
+        
+        models = self.registry.list_models()
+        self.assertEqual(len(models), 1)
+        self.assertEqual(models[0]["run_id"], "run1")
+        # Ensure it didn't crash and metric key is absent
+        self.assertNotIn("metrics.cv_mean_score", models[0])
+
     @patch("src.services.model_registry.mlflow.pyfunc.load_model")
     def test_load_model(self, mock_load):
         mock_model_wrapper = MagicMock()
-        mock_model_wrapper.unwrap_python_model.return_value = "RealModel"
-        mock_load.return_value = mock_model_wrapper
+        # First unwrap returns the SalaryForecasterWrapper instance
+        # Second unwrap (called on Wrapper) returns the Inner Model
+        
+        # We simulate this chain
+        mock_pyfunc_model = MagicMock()
+        mock_wrapper = MagicMock()
+        mock_wrapper.unwrap_python_model.return_value = "RealModel"
+        
+        mock_pyfunc_model.unwrap_python_model.return_value = mock_wrapper
+        mock_load.return_value = mock_pyfunc_model
         
         model = self.registry.load_model("run123")
         self.assertEqual(model, "RealModel")
