@@ -13,18 +13,23 @@ class TestGenerateConfigCLI(unittest.TestCase):
     def test_heuristic_generation(self, mock_print, mock_exists, MockGenerator, mock_read_csv, mock_ears):
         # Setup
         mock_exists.return_value = True
-        mock_ears.return_value = MagicMock(input_file="data.csv", output=None, llm=False, verbose=False)
+        mock_ears.return_value = MagicMock(input_file="data.csv", output=None, llm=False, verbose=False, preset="none", provider="openai")
         mock_read_csv.return_value = pd.DataFrame({"A": [1]})
         
         mock_gen_instance = MockGenerator.return_value
-        mock_gen_instance.generate_config_template.return_value = {"mapping": "heuristic"}
+        mock_gen_instance.generate_config.return_value = {"mapping": "heuristic"}
         
         # Run
         main()
         
         # Verify
-        mock_gen_instance.generate_config_template.assert_called_once()
-        mock_print.assert_called() # Should print JSON to stdout
+        mock_gen_instance.generate_config.assert_called_with(
+            mock_read_csv.return_value, # Using the return value of mock_read_csv directly might fail comparison? No, object identity works.
+            use_llm=False,
+            provider="openai",
+            preset="none"
+        )
+        mock_print.assert_called() 
         args = mock_print.call_args[0][0]
         self.assertIn("heuristic", args)
 
@@ -39,18 +44,24 @@ class TestGenerateConfigCLI(unittest.TestCase):
         
         # Setup Parser Mock
         mock_parser_instance = MockParser.return_value
-        mock_parser_instance.parse_args.return_value = MagicMock(input_file="data.csv", output="out.json", llm=True, provider="openai", verbose=True)
+        mock_parser_instance.parse_args.return_value = MagicMock(
+            input_file="data.csv", output="out.json", llm=True, provider="openai", verbose=True, preset="salary"
+        )
         
         mock_gen_instance = MockGenerator.return_value
-        mock_gen_instance.generate_config_with_llm.return_value = {"mapping": "llm"}
+        mock_gen_instance.generate_config.return_value = {"mapping": "llm"}
         
         # Run
         main()
         
         # Verify
-        mock_gen_instance.generate_config_with_llm.assert_called_once()
+        mock_gen_instance.generate_config.assert_called_with(
+            mock_read_csv.return_value, 
+            use_llm=True, 
+            provider="openai", 
+            preset="salary"
+        )
         mock_file.assert_called_with("out.json", "w")
-        # json.dump calls write multiple times, just check called
         self.assertTrue(mock_file.return_value.write.called)
 
     @patch('src.cli.generate_config_cli.argparse.ArgumentParser.parse_args')

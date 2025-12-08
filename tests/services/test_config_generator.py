@@ -47,14 +47,8 @@ class TestConfigGenerator(unittest.TestCase):
         self.assertIn("model", config)
         self.assertEqual(config["mappings"]["levels"]["L3"], 0)
 
-    @patch("src.services.llm_service.LLMService")
-    def test_generate_config_with_llm_success(self, MockLLMService):
-        # Setup data: Alphabetically "Junior" < "Senior".
-        # LLM should fix this to Junior (0) < Senior (1).
-        # Wait, sorted alphabetical: Junior, Senior. That is correct actually.
-        # Let's use "Staff" vs "Principal". Alphabetical: Principal, Staff.
-        # Semantic: Staff < Principal.
-        
+    @patch("src.services.config_generator.LLMService")
+    def test_generate_config_llm_success(self, MockLLMService):
         data = pd.DataFrame({
             "Level": ["Staff", "Principal"],
             "Location": ["Seattle", "Seattle"],
@@ -70,27 +64,41 @@ class TestConfigGenerator(unittest.TestCase):
             },
             "model": {
                 "targets": ["TotalComp"],
-                "features": []
-            }
+                "features": [],
+                "quantiles": [0.5],
+                "sample_weight_k": 1.0,
+                "hyperparameters": {}
+            },
+            "location_settings": {"max_distance_km": 50}
         }
         
-        config = self.generator.generate_config_with_llm(data, provider="mock")
+        # Call with use_llm=True
+        config = self.generator.generate_config(data, use_llm=True, provider="mock", preset="salary")
         
-        # Heuristic would sort P before S (Principal < Staff).
-        # LLM override should make Principal=1, Staff=0.
+        # Verify LLMService Called with correct args
+        mock_instance.generate_config.assert_called_with(data, preset="salary")
         
+        # Verify Output
         self.assertEqual(config["mappings"]["levels"]["Staff"], 0)
         self.assertEqual(config["mappings"]["levels"]["Principal"], 1)
-        self.assertEqual(config["model"]["targets"], ["TotalComp"])
-        
-    @patch("src.services.llm_service.LLMService")
-    def test_generate_config_with_llm_failure(self, MockLLMService):
+
+    @patch("src.services.config_generator.LLMService")
+    def test_generate_config_llm_failure(self, MockLLMService):
         data = pd.DataFrame({"Level": ["L3"], "Location": ["NY"]})
         
         # Mock failure
         MockLLMService.side_effect = Exception("API Error")
+        mock_instance = MockLLMService.return_value
+        mock_instance.generate_config.side_effect = Exception("API Error")
+
+        # New behavior: Should raise Exception, NOT silently fallback
+        with self.assertRaises(Exception):
+            self.generator.generate_config(data, use_llm=True)
+            
+    def test_generate_config_heuristic_explicit(self):
+        data = pd.DataFrame({"Level": ["L3"], "Location": ["NY"]})
         
-        config = self.generator.generate_config_with_llm(data)
+        config = self.generator.generate_config(data, use_llm=False)
         
-        # Should return heuristic baseline
+        # Verify Heuristic structure
         self.assertEqual(config["mappings"]["levels"]["L3"], 0)

@@ -4,6 +4,9 @@ from datetime import datetime
 import uuid
 import threading
 from concurrent.futures import ThreadPoolExecutor
+import numpy as np
+import mlflow
+from src.services.model_registry import SalaryForecasterWrapper
 from src.xgboost.model import SalaryForecaster
 from src.utils.logger import get_logger
 
@@ -79,8 +82,6 @@ class TrainingService:
 
     def _run_async_job(self, job_id: str, data: pd.DataFrame, remove_outliers: bool, do_tune: bool, n_trials: int):
         """Internal worker method."""
-        import mlflow
-        from src.services.model_registry import SalaryForecasterWrapper
         
         # Local callback to capture logs into the job state
         def _async_callback(msg: str, data: Optional[Dict[str, Any]] = None):
@@ -140,7 +141,6 @@ class TrainingService:
                 # Log final metrics if available
                 scores = self._jobs[job_id].get("scores", [])
                 if scores:
-                    import numpy as np
                     mean_score = np.mean(scores)
                     mlflow.log_metric("cv_mean_score", mean_score)
                     self.logger.info(f"Job {job_id} finished. CV Mean Score: {mean_score:.4f}")

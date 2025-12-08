@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd
 import streamlit as st
+from datetime import datetime
 from src.app.model_analysis import render_model_analysis_ui
 
 @pytest.fixture
@@ -27,7 +28,6 @@ def test_no_models_shows_warning(mock_streamlit, mock_registry):
     mock_streamlit.warning.assert_called_with("No models found in MLflow. Please train a new model.")
 
 def test_load_valid_model(mock_streamlit, mock_registry, mock_analytics):
-    from datetime import datetime
     run_data = {
         "run_id": "run123",
         "start_time": datetime(2023,1,1,12,0),
@@ -80,8 +80,7 @@ def test_load_valid_model(mock_streamlit, mock_registry, mock_analytics):
     mock_streamlit.pyplot.assert_called()
 
 def test_empty_importance(mock_streamlit, mock_registry, mock_analytics):
-    from datetime import datetime
-    # Construct expected label based on default mock behavior? 
+    # Construct expected label based on default mock behavior?  
     # Better to define specific run data
     run_data = {
         "run_id": "run123",

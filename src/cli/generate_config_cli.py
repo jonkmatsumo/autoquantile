@@ -14,6 +14,7 @@ def main():
     parser.add_argument("-o", "--output", help="Output JSON file path (default: stdout).")
     parser.add_argument("--llm", action="store_true", help="Use LLM to infer configuration.")
     parser.add_argument("--provider", default="openai", choices=["openai", "gemini"], help="LLM provider (default: openai).")
+    parser.add_argument("--preset", default="none", help="LLM Preset (e.g. salary, none).")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging.")
     
     args = parser.parse_args()
@@ -31,12 +32,14 @@ def main():
         
         generator = ConfigGenerator()
         
-        if args.llm:
-            logger.info(f"Generating config using LLM ({args.provider})...")
-            config = generator.generate_config_with_llm(df, provider=args.provider)
-        else:
-            logger.info("Generating config using heuristics...")
-            config = generator.generate_config_template(df)
+        # Use centralized generate_config logic
+        logger.info(f"Generating config (LLM={args.llm})...")
+        config = generator.generate_config(
+            df, 
+            use_llm=args.llm, 
+            provider=args.provider, 
+            preset=args.preset
+        )
             
         if args.output:
             with open(args.output, "w") as f:

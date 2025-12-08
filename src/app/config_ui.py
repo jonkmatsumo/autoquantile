@@ -3,6 +3,9 @@ import pandas as pd
 import json
 import copy
 from typing import Dict, Any, List
+from src.services.config_generator import ConfigGenerator
+from src.app.caching import load_data_cached
+from src.utils.csv_validator import validate_csv
 
 def render_save_load_controls(current_config_state: Dict[str, Any]) -> None:
     """Renders Save/Load controls.
@@ -254,6 +257,69 @@ def render_config_ui(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     st.header("Configuration")
     
+    
+    # --- Config Generator Section ---
+    
+    with st.expander("Generate Configuration from Data", expanded=False):
+        st.write("Automatically generate a configuration by analyzing your dataset.")
+        
+        # Data Selection
+        data_source = st.radio("Data Source", ["Use Loaded Training Data", "Upload New CSV"], horizontal=True)
+        
+        df_to_analyze = None
+        
+        if data_source == "Use Loaded Training Data":
+            if "training_data" in st.session_state:
+                df_to_analyze = st.session_state["training_data"]
+                st.success(f"Using loaded data ({len(df_to_analyze)} rows).")
+            else:
+                st.warning("No training data loaded. Please upload a CSV.")
+        else:
+            uploaded_file = st.file_uploader("Upload CSV Sample", type=["csv"], key="config_gen_uploader")
+            if uploaded_file:
+                is_valid, err, df = validate_csv(uploaded_file)
+                if is_valid:
+                    df_to_analyze = df
+                    st.success(f"CSV Validated ({len(df)} rows).")
+                else:
+                    st.error(f"Invalid CSV: {err}")
+
+        # AI Settings
+        use_ai = st.checkbox("Use AI (LLM)", value=True, help="Use Large Language Model to infer configuration. Uncheck to use simple heuristics.")
+        
+        preset = "none"
+        provider = "openai"
+        
+        if use_ai:
+            col_p, col_pre = st.columns(2)
+            with col_p:
+                provider = st.selectbox("LLM Provider", ["openai", "gemini"], index=0)
+            with col_pre:
+                preset = st.selectbox("Preset (Domain)", ["none", "salary"], index=1, format_func=lambda x: "Generic" if x == "none" else "Salary Forecasting")
+        
+        if st.button("Generate Configuration", disabled=(df_to_analyze is None), type="primary"):
+            generator = ConfigGenerator()
+            try:
+                with st.spinner("Analyzing data and generating configuration..."):
+                    new_proposal = generator.generate_config(
+                        df_to_analyze, 
+                        use_llm=use_ai, 
+                        provider=provider, 
+                        preset=preset
+                    )
+                    
+                st.session_state["config_override"] = new_proposal
+                st.success("Configuration generated successfully! Review the proposal below.")
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"Generation failed: {str(e)}")
+                if use_ai:
+                    st.info("Tip: You can try unchecking 'Use AI' to use basic heuristics instead.")
+
+    st.markdown("---")
+    # -------------------------------
+
     if "config_override" in st.session_state:
          config = st.session_state["config_override"]
     
