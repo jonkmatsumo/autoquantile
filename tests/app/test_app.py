@@ -42,7 +42,12 @@ class TestStreamlitApp(unittest.TestCase):
         # Check we have model name input (text_input)
         self.assertTrue(len(at.text_input) >= 1)
         
-        # Checkboxes (Outliers, Tune, Live Chart)
+        # Check for Start Training button
+        # Note: In async mode, the button label changes
+        buttons = [b.label for b in at.button]
+        self.assertTrue(any("Start Training" in b for b in buttons))
+        
+        # Checkboxes (Outliers, Tune) - Live Chart removed for async simplicity
         self.assertTrue(len(at.checkbox) >= 2)
 
     def test_navigation_inference(self):

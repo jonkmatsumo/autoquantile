@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from src.app.caching import load_data_cached as load_data
+from src.services.analytics_service import AnalyticsService
 
 def render_data_analysis_ui() -> None:
     """Renders the data analysis dashboard."""
@@ -30,16 +31,19 @@ def render_data_analysis_ui() -> None:
                 
     if df is None:
         return
+        
+    analytics_service = AnalyticsService()
+    summary = analytics_service.get_data_summary(df)
 
     st.subheader("Overview")
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total Samples", len(df))
-    col2.metric("Unique Locations", df["Location"].nunique())
-    col3.metric("Unique Levels", df["Level"].nunique())
+    col1.metric("Total Samples", summary.get("total_samples", 0))
+    col2.metric("Unique Locations", summary.get("unique_locations", 0))
+    col3.metric("Unique Levels", summary.get("unique_levels", 0))
     
     with st.expander("View Data Sample"):
         st.dataframe(df.head())
-        st.caption(f"Shape: {df.shape}")
+        st.caption(f"Shape: {summary.get('shape')}")
         
     st.markdown("---")
         

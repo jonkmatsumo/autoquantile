@@ -3,8 +3,6 @@ import pandas as pd
 import json
 import traceback
 import os
-import pickle
-import glob
 import sys
 import matplotlib.pyplot as plt
 from datetime import datetime
@@ -12,9 +10,6 @@ from typing import Optional, Dict, Any, List
 
 # Ensure src can be imported if running from inside src/app or root
 current_dir = os.path.dirname(os.path.abspath(__file__))
-root_dir = os.path.abspath(os.path.join(current_dir, "../.."))
-if root_dir not in sys.path:
-    sys.path.append(root_dir)
 
 from src.model.model import SalaryForecaster
 from src.app.config_ui import render_config_ui
@@ -23,14 +18,20 @@ from src.app.model_analysis import render_model_analysis_ui
 from src.utils.config_loader import get_config
 from src.app.caching import load_data_cached as load_data
 
+# Services
+from src.services.model_registry import ModelRegistry
+from src.services.training_service import TrainingService
+
 def render_inference_ui() -> None:
     """Renders the inference interface."""
     st.header("Salary Inference")
     
+    registry = ModelRegistry()
+    
     # Check if model is loaded
     if "forecaster" not in st.session_state:
         # Try to find models
-        model_files = glob.glob("*.pkl")
+        model_files = registry.list_models()
         if not model_files:
             st.warning("No model files found. Please train a model first.")
             if st.button("Go to Training"):
@@ -41,8 +42,7 @@ def render_inference_ui() -> None:
         selected_model = st.selectbox("Select Model", model_files)
         if st.button("Load Model"):
             try:
-                with open(selected_model, "rb") as f:
-                    st.session_state["forecaster"] = pickle.load(f)
+                st.session_state["forecaster"] = registry.load_model(selected_model)
                 st.success(f"Loaded {selected_model}")
                 st.rerun()
             except Exception as e:
@@ -109,6 +109,13 @@ def render_inference_ui() -> None:
             # 2. Table
             st.dataframe(res_df.style.format({c: "${:,.0f}" for c in res_df.columns if c != "Component"}))
 
+import time
+
+# Service Singleton
+@st.cache_resource
+def get_training_service() -> TrainingService:
+    return TrainingService()
+
 def render_training_ui() -> None:
     """Renders the model training interface."""
     st.header("Model Training")
@@ -140,81 +147,110 @@ def render_training_ui() -> None:
         
     remove_outliers = st.checkbox("Remove Outliers (IQR)", value=True)
     
-    display_charts = st.checkbox("Show Live Charts", value=False)
+    # Restored: Chart option for post-training display
+    display_charts = st.checkbox("Show Training Performance Chart", value=True)
     
     custom_name = st.text_input("Model Output Filename (Optional)", placeholder="e.g. my_custom_model.pkl")
     
-    if st.button("Start Training"):
-        if df is None:
-            st.error("No data loaded. Please upload a CSV or load data in Data Analysis.")
+    # Initialize Service
+    training_service = get_training_service()
+    registry = ModelRegistry()
+
+    # Job State Management
+    if "training_job_id" not in st.session_state:
+        st.session_state["training_job_id"] = None
+        
+    job_id = st.session_state["training_job_id"]
+
+    # Start Button
+    if job_id is None:
+        if st.button("Start Training (Async)"):
+            if df is None:
+                st.error("No data loaded.")
+                return
+                
+            job_id = training_service.start_training_async(
+                df, 
+                remove_outliers=remove_outliers,
+                do_tune=do_tune,
+                n_trials=num_trials
+            )
+            st.session_state["training_job_id"] = job_id
+            st.rerun()
+
+    # Polling & Status Display
+    else:
+        status = training_service.get_job_status(job_id)
+        
+        if status is None:
+            st.error("Job not found. Clearing state.")
+            st.session_state["training_job_id"] = None
+            st.rerun()
             return
-            
-        # 2. Dynamic Results Table Setup
-        status_container = st.empty()
-        results_placeholder = st.empty()
-        chart_placeholder = st.empty() if display_charts else None
-        log_container = st.empty()
+
+        state = status["status"]
+        st.info(f"Training Status: **{state}**")
         
-        logs = []
-        results_log = []
-        chart_data = []
-        
-        def streamlit_callback(msg: str, data: Optional[Dict[str, Any]] = None) -> None:
-            status_container.markdown(f"**Status:** {msg}")
-            logs.append(msg)
-            if len(logs) > 5: # Keep log short
-                logs.pop(0)
-            log_container.code("\n".join(logs))
-            
-            # Dynamic Results Update
-            if data and data.get("stage") == "cv_end":
-                # Table Data
-                results_log.append({
-                    "Model": data.get("model_name"),
-                    "Best Round": data.get("best_round"),
-                    "Score": f"{data.get('best_score'):.4f}" 
-                })
-                # Update table in real-time
-                results_placeholder.dataframe(pd.DataFrame(results_log))
+        # Progress Bar / Spinner equivalent
+        if state in ["QUEUED", "RUNNING"]:
+            with st.spinner("Training in progress... (You can switch tabs, but stay in app to see completion)"):
+                # Poll every 2 seconds
+                time.sleep(2) 
+                st.rerun()
                 
-                # Chart Data
-                if display_charts and chart_placeholder:
-                    chart_data.append({
-                        "Model": data.get("model_name"),
-                        "Score": data.get("best_score")
+        # Show Logs
+        with st.expander("Training Logs", expanded=(state != "COMPLETED")):
+            st.code("\n".join(status["logs"]))
+
+        # Completion Handling
+        if state == "COMPLETED":
+            st.success("Training Finished Successfully!")
+            
+            # --- Result Visualization ---
+            history = status.get("history", [])
+            results_data = []
+            
+            for event in history:
+                if event.get("stage") == "cv_end":
+                    results_data.append({
+                        "Model": event.get("model_name"),
+                        "Best Round": event.get("best_round"),
+                        "Score": event.get("best_score")
                     })
-                    c_df = pd.DataFrame(chart_data)
-                    chart_placeholder.line_chart(c_df.set_index("Model")["Score"])
             
-        try:
-            # Use current config
-            forecaster = SalaryForecaster()
-            
-            if do_tune:
-                streamlit_callback("Starting tuning...")
-                best_params = forecaster.tune(df, n_trials=num_trials)
-                st.write("Best Hyperparameters:", best_params)
-            
-            streamlit_callback("Starting training...")
-            forecaster.train(df, callback=streamlit_callback, remove_outliers=remove_outliers)
-            
-            # Save
-            if custom_name and custom_name.strip():
-                output_path = custom_name.strip()
-                if not output_path.endswith(".pkl"):
-                    output_path += ".pkl"
-            else:
-                output_path = f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
+            if results_data:
+                res_df = pd.DataFrame(results_data)
                 
-            with open(output_path, "wb") as f:
-                pickle.dump(forecaster, f)
+                # 1. Chart
+                if display_charts:
+                    st.line_chart(res_df.set_index("Model")["Score"])
                 
-            st.success(f"Training Complete! Model saved to {output_path}")
+                # 2. Table
+                st.dataframe(res_df.style.format({"Score": "{:.4f}"}))
+            # ---------------------------
+            
+            forecaster = status["result"]
             st.session_state["forecaster"] = forecaster
             
-        except Exception as e:
-            st.error(f"Training failed: {e}")
-            st.code(traceback.format_exc())
+            # Save Logic
+            if st.button("Save Model"):
+                if custom_name and custom_name.strip():
+                    output_path = custom_name.strip()
+                else:
+                    output_path = f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
+                    
+                full_path = registry.save_model(forecaster, output_path)
+                st.success(f"Saved to {full_path}")
+                
+            if st.button("Start New Training"):
+                st.session_state["training_job_id"] = None
+                st.rerun()
+                
+        elif state == "FAILED":
+            st.error(f"Training Failed: {status.get('error')}")
+            if st.button("Retry"):
+                st.session_state["training_job_id"] = None
+                st.rerun()
 
 def main() -> None:
     """Main entry point for the Streamlit application."""
@@ -230,12 +266,6 @@ def main() -> None:
     if "nav" not in st.session_state:
         st.session_state["nav"] = "Inference"
         
-    # We can't easily sync st.sidebar.radio with session_state unless we use index/on_change
-    # For now, let's just let the user pick
-    # But wait, if we redirect from Inference to Training, we might want to update the sidebar.
-    # Streamlit sidebar navigation is tricky to programmatically change without rerun.
-    # We will use the simple approach: defaults to Inference, if session_state["nav"] is set, try to use it.
-    
     options = ["Inference", "Training", "Data Analysis", "Model Analysis", "Configuration"]
     default_index = 0
     if st.session_state.get("nav") in options:
@@ -243,7 +273,7 @@ def main() -> None:
         
     nav = st.sidebar.radio("Go to", options, index=default_index, key="nav_radio")
     
-    # Update session state to match (to sync back if user clicked radio)
+    # Update session state to match
     st.session_state["nav"] = nav
     
     if nav == "Inference":
