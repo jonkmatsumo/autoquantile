@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import MagicMock, patch
 import pandas as pd
 from src.services.config_generator import ConfigGenerator
 
@@ -44,4 +45,52 @@ class TestConfigGenerator(unittest.TestCase):
         config = self.generator.generate_config_template(data)
         self.assertIn("mappings", config)
         self.assertIn("model", config)
+        self.assertEqual(config["mappings"]["levels"]["L3"], 0)
+
+    @patch("src.services.llm_service.LLMService")
+    def test_generate_config_with_llm_success(self, MockLLMService):
+        # Setup data: Alphabetically "Junior" < "Senior".
+        # LLM should fix this to Junior (0) < Senior (1).
+        # Wait, sorted alphabetical: Junior, Senior. That is correct actually.
+        # Let's use "Staff" vs "Principal". Alphabetical: Principal, Staff.
+        # Semantic: Staff < Principal.
+        
+        data = pd.DataFrame({
+            "Level": ["Staff", "Principal"],
+            "Location": ["Seattle", "Seattle"],
+            "TotalComp": [200000, 300000]
+        })
+        
+        # Mock LLM response
+        mock_instance = MockLLMService.return_value
+        mock_instance.generate_config.return_value = {
+            "mappings": {
+                "levels": {"Staff": 0, "Principal": 1},
+                "location_targets": {"Seattle": 2}
+            },
+            "model": {
+                "targets": ["TotalComp"],
+                "features": []
+            }
+        }
+        
+        config = self.generator.generate_config_with_llm(data, provider="mock")
+        
+        # Heuristic would sort P before S (Principal < Staff).
+        # LLM override should make Principal=1, Staff=0.
+        
+        self.assertEqual(config["mappings"]["levels"]["Staff"], 0)
+        self.assertEqual(config["mappings"]["levels"]["Principal"], 1)
+        self.assertEqual(config["model"]["targets"], ["TotalComp"])
+        
+    @patch("src.services.llm_service.LLMService")
+    def test_generate_config_with_llm_failure(self, MockLLMService):
+        data = pd.DataFrame({"Level": ["L3"], "Location": ["NY"]})
+        
+        # Mock failure
+        MockLLMService.side_effect = Exception("API Error")
+        
+        config = self.generator.generate_config_with_llm(data)
+        
+        # Should return heuristic baseline
         self.assertEqual(config["mappings"]["levels"]["L3"], 0)
