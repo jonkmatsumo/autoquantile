@@ -1,26 +1,26 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from src.app.app import render_training_ui
+from src.app.train_ui import render_training_ui
 
 @pytest.fixture
 def mock_streamlit():
-    with patch("src.app.app.st") as mock_st:
+    with patch("src.app.train_ui.st") as mock_st:
         mock_st.session_state = {}
         yield mock_st
 
 @pytest.fixture
 def mock_load_data():
-    with patch("src.app.app.load_data") as mock_ld:
+    with patch("src.app.train_ui.load_data") as mock_ld:
         yield mock_ld
 
 @pytest.fixture
 def mock_training_service():
-    with patch("src.app.app.get_training_service") as mock_get_svc:
+    with patch("src.app.train_ui.get_training_service") as mock_get_svc:
         yield mock_get_svc
 
 @pytest.fixture
 def mock_registry():
-    with patch("src.app.app.ModelRegistry") as mock_reg:
+    with patch("src.app.train_ui.ModelRegistry") as mock_reg:
         yield mock_reg
 
 def test_render_training_ui_upload_redirect(mock_streamlit, mock_load_data, mock_training_service, mock_registry):
