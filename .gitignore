@@ -21,6 +21,7 @@ build/
 # Documentation
 *.md
 !README.md
+!src/llm/prompts/*.md
 
 # MLflow
 mlruns/
