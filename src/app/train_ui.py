@@ -47,7 +47,7 @@ def render_training_ui() -> None:
 
     display_charts = st.checkbox("Show Training Performance Chart", value=True)
     
-    custom_name = st.text_input("Model Output Filename (Optional)", placeholder="e.g. my_custom_model.pkl")
+    additional_tag = st.text_input("Additional Tag (Optional)", placeholder="e.g. experimental-v1")
     
 
     training_service = get_training_service()
@@ -73,7 +73,7 @@ def render_training_ui() -> None:
                 remove_outliers=remove_outliers,
                 do_tune=do_tune,
                 n_trials=num_trials,
-                custom_name=custom_name if custom_name.strip() else None,
+                additional_tag=additional_tag if additional_tag.strip() else None,
                 dataset_name=dataset_name
             )
             st.session_state["training_job_id"] = job_id

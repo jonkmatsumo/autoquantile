@@ -49,3 +49,39 @@ def test_render_training_ui_upload_redirect(mock_streamlit, mock_load_data, mock
             found_redirect = True
             break
     assert found_redirect, "Redirect tip message not found in Training UI"
+            
+def test_render_training_ui_starts_job(mock_streamlit, mock_load_data, mock_training_service):
+    # Setup state
+    df = MagicMock()
+    mock_streamlit.session_state = {
+        "training_data": df,
+        "training_dataset_name": "dataset.csv",
+        "training_job_id": None
+    }
+    
+    # Mock inputs
+    mock_streamlit.checkbox.return_value = False # no tune
+    mock_streamlit.number_input.return_value = 20
+    # text_input for additional tag
+    mock_streamlit.text_input.return_value = "tag-v1"
+    
+    # Mock Start Button -> True
+    mock_streamlit.button.side_effect = [False, True] # First (load different) False, Second (Start) True
+    
+    # Mock Service
+    service_instance = mock_training_service.return_value
+    service_instance.start_training_async.return_value = "new_job_id"
+    
+    render_training_ui()
+    
+    service_instance.start_training_async.assert_called_with(
+        df,
+        remove_outliers=False,
+        do_tune=False,
+        n_trials=20,
+        additional_tag="tag-v1",
+        dataset_name="dataset.csv"
+    )
+    
+    assert mock_streamlit.session_state["training_job_id"] == "new_job_id"
+    mock_streamlit.rerun.assert_called()

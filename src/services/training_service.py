@@ -49,7 +49,7 @@ class TrainingService:
                            remove_outliers: bool = True,
                            do_tune: bool = False,
                            n_trials: int = 20,
-                           custom_name: Optional[str] = None,
+                           additional_tag: Optional[str] = None,
                            dataset_name: str = "Unknown") -> str:
         """Starts training in a background thread and returns a Job ID."""
         job_id = str(uuid.uuid4())
@@ -72,7 +72,7 @@ class TrainingService:
             remove_outliers, 
             do_tune, 
             n_trials,
-            custom_name,
+            additional_tag,
             dataset_name
         )
         
@@ -83,7 +83,7 @@ class TrainingService:
         with self._lock:
             return self._jobs.get(job_id)
 
-    def _run_async_job(self, job_id: str, data: pd.DataFrame, remove_outliers: bool, do_tune: bool, n_trials: int, custom_name: Optional[str], dataset_name: str):
+    def _run_async_job(self, job_id: str, data: pd.DataFrame, remove_outliers: bool, do_tune: bool, n_trials: int, additional_tag: Optional[str], dataset_name: str):
         """Internal worker method."""
         
 
@@ -114,8 +114,8 @@ class TrainingService:
 
             mlflow.set_experiment("Salary_Forecast")
             run_name = f"Training_{job_id}"
-            if custom_name:
-                run_name = custom_name
+            if additional_tag:
+                run_name = additional_tag
             
             with mlflow.start_run(run_name=run_name) as run:
                 
@@ -123,7 +123,7 @@ class TrainingService:
                 mlflow.set_tags({
                     "model_type": "XGBoost",
                     "dataset_name": dataset_name,
-                    "output_filename": custom_name if custom_name else "N/A"
+                    "additional_tag": additional_tag if additional_tag else "N/A"
                 })
 
                 mlflow.log_params({

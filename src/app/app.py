@@ -53,16 +53,23 @@ def render_inference_ui() -> None:
         ts = r['start_time'].strftime('%Y-%m-%d %H:%M')
         # Check tags first, fallback to hardcoded or empty
         tags = r.get("tags", {})
-        m_type = tags.get("model_type", "XGBoost") # Default to XGBoost if not set (legacy)
+        m_type = tags.get("model_type", "XGBoost") # Default to XGBoost
         d_name = tags.get("dataset_name", "Unknown Data")
         
+        # Check for additional tag (or legacy output_filename)
+        add_tag = tags.get("additional_tag")
+        if not add_tag or add_tag == "N/A":
+             add_tag = tags.get("output_filename")
+             
         cv_score = fmt_score(r.get('metrics.cv_mean_score', 'N/A'))
         r_id = r['run_id'][:8]
         
-        # If custom name was set (run_name), usage might differ, but user asked for tags in specific order
-        # We can also append the custom name if it's distinct from the ID/Standard name
+        base = f"{ts} | {m_type} | {d_name} | CV:{cv_score} | ID:{r_id}"
         
-        return f"{ts} | [{m_type}] | [{d_name}] | CV:{cv_score} | ID:{r_id}"
+        if add_tag and add_tag != "N/A":
+            base += f" | {add_tag}"
+            
+        return base
 
     run_options = {get_run_label(r): r['run_id'] for r in runs}
     
