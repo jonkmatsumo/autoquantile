@@ -48,8 +48,23 @@ def render_inference_ui() -> None:
             return f"{float(x):.4f}"
         except (ValueError, TypeError):
             return str(x)
+    
+    def get_run_label(r):
+        ts = r['start_time'].strftime('%Y-%m-%d %H:%M')
+        # Check tags first, fallback to hardcoded or empty
+        tags = r.get("tags", {})
+        m_type = tags.get("model_type", "XGBoost") # Default to XGBoost if not set (legacy)
+        d_name = tags.get("dataset_name", "Unknown Data")
+        
+        cv_score = fmt_score(r.get('metrics.cv_mean_score', 'N/A'))
+        r_id = r['run_id'][:8]
+        
+        # If custom name was set (run_name), usage might differ, but user asked for tags in specific order
+        # We can also append the custom name if it's distinct from the ID/Standard name
+        
+        return f"{ts} | [{m_type}] | [{d_name}] | CV:{cv_score} | ID:{r_id}"
 
-    run_options = {f"{r['start_time'].strftime('%Y-%m-%d %H:%M')} | CV:{fmt_score(r.get('metrics.cv_mean_score', 'N/A'))} | ID:{r['run_id'][:8]}": r['run_id'] for r in runs}
+    run_options = {get_run_label(r): r['run_id'] for r in runs}
     
     selected_label = st.selectbox("Select Model Version", options=list(run_options.keys()))
     

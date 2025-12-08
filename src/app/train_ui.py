@@ -30,6 +30,7 @@ def render_training_ui() -> None:
             try:
                 df = load_data(uploaded_file)
                 st.session_state["training_data"] = df
+                st.session_state["training_dataset_name"] = uploaded_file.name
 
                 st.success(f"Loaded {len(df)} rows.")
                 st.info("💡 **Tip**: If this is a new dataset, go to the **Configuration** page to generate an optimal config.")
@@ -65,11 +66,15 @@ def render_training_ui() -> None:
                 st.error("No data loaded.")
                 return
                 
+            dataset_name = st.session_state.get("training_dataset_name", "Unknown Data")
+            
             job_id = training_service.start_training_async(
                 df, 
                 remove_outliers=remove_outliers,
                 do_tune=do_tune,
-                n_trials=num_trials
+                n_trials=num_trials,
+                custom_name=custom_name if custom_name.strip() else None,
+                dataset_name=dataset_name
             )
             st.session_state["training_job_id"] = job_id
             st.rerun()

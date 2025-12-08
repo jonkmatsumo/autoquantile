@@ -48,7 +48,9 @@ class TrainingService:
                            data: pd.DataFrame, 
                            remove_outliers: bool = True,
                            do_tune: bool = False,
-                           n_trials: int = 20) -> str:
+                           n_trials: int = 20,
+                           custom_name: Optional[str] = None,
+                           dataset_name: str = "Unknown") -> str:
         """Starts training in a background thread and returns a Job ID."""
         job_id = str(uuid.uuid4())
         
@@ -57,9 +59,8 @@ class TrainingService:
                 "status": "QUEUED",
                 "submitted_at": datetime.now(),
                 "logs": [],
-                "logs": [],
                 "history": [], 
-                "scores": [], # Track CV scores for aggregation
+                "scores": [],
                 "result": None,
                 "error": None
             }
@@ -70,7 +71,9 @@ class TrainingService:
             data, 
             remove_outliers, 
             do_tune, 
-            n_trials
+            n_trials,
+            custom_name,
+            dataset_name
         )
         
         return job_id
@@ -80,7 +83,7 @@ class TrainingService:
         with self._lock:
             return self._jobs.get(job_id)
 
-    def _run_async_job(self, job_id: str, data: pd.DataFrame, remove_outliers: bool, do_tune: bool, n_trials: int):
+    def _run_async_job(self, job_id: str, data: pd.DataFrame, remove_outliers: bool, do_tune: bool, n_trials: int, custom_name: Optional[str], dataset_name: str):
         """Internal worker method."""
         
 
@@ -110,8 +113,18 @@ class TrainingService:
 
 
             mlflow.set_experiment("Salary_Forecast")
-            with mlflow.start_run(run_name=f"Training_{job_id}") as run:
+            run_name = f"Training_{job_id}"
+            if custom_name:
+                run_name = custom_name
+            
+            with mlflow.start_run(run_name=run_name) as run:
                 
+                # Log Tags for UI Filtering/Display
+                mlflow.set_tags({
+                    "model_type": "XGBoost",
+                    "dataset_name": dataset_name,
+                    "output_filename": custom_name if custom_name else "N/A"
+                })
 
                 mlflow.log_params({
                     "remove_outliers": remove_outliers,
