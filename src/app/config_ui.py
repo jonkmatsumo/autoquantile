@@ -38,39 +38,93 @@ def render_save_load_controls(current_config_state: Dict[str, Any]) -> None:
             st.error("Invalid JSON file.")
 
 
-def render_levels_editor(config: Dict[str, Any]) -> Dict[str, int]:
-    """Renders an editor for the 'mappings.levels' section.
-
-    Args:
-        config (Dict[str, Any]): Full configuration dictionary.
-
-    Returns:
-        Dict[str, int]: Updated levels dictionary.
+def render_ranked_mappings_section(config: Dict[str, Any]) -> None:
+    """Renders editor for Ranked Mappings (feature_engineering).
+    
+    Updates config in-place.
     """
-    st.subheader("Levels Configuration")
+    st.subheader("Ranked Categories")
     
-    levels_dict = config.get("mappings", {}).get("levels", {})
+    # Ensure config structure
+    if "feature_engineering" not in config:
+        config["feature_engineering"] = {
+            "ranked_cols": {},
+            "proximity_cols": []
+        }
+        # Migration attempt
+        if "mappings" in config and "levels" in config["mappings"]:
+            config["feature_engineering"]["ranked_cols"]["Level"] = "levels"
+        if "Location" in [f.get("name") for f in config.get("model",{}).get("features",[])]:
+             if "proximity_cols" not in config["feature_engineering"]:
+                 config["feature_engineering"]["proximity_cols"] = ["Location"]
+             elif "Location" not in config["feature_engineering"]["proximity_cols"]:
+                 config["feature_engineering"]["proximity_cols"].append("Location")
+
+    fe_config = config["feature_engineering"]
+    ranked_cols = fe_config.get("ranked_cols", {})
+    mappings = config.get("mappings", {})
     
-    data = [{"Level": k, "Rank": v} for k, v in levels_dict.items()]
-    df = pd.DataFrame(data)
+    # 1. Manage Columns
+    st.markdown("##### Mapped Columns")
     
-    edited_df = st.data_editor(
-        df,
+    # List current
+    current_cols = list(ranked_cols.keys())
+    
+    # Editor for columns and their mapping keys
+    cols_data = [{"Column": col, "MappingKey": key} for col, key in ranked_cols.items()]
+    cols_df = pd.DataFrame(cols_data)
+    
+    edited_cols = st.data_editor(
+        cols_df,
         num_rows="dynamic",
-        width="stretch",
-        key="levels_editor",
+        key="ranked_cols_editor",
         column_config={
-            "Level": st.column_config.TextColumn("Level Name", required=True),
-            "Rank": st.column_config.NumberColumn("Rank Value", required=True, min_value=0, step=1)
+            "Column": st.column_config.TextColumn("Column Name", required=True),
+            "MappingKey": st.column_config.TextColumn("Mapping Key (in mappings)", required=True)
         }
     )
     
-    new_levels = {}
-    for index, row in edited_df.iterrows():
-        if row["Level"]: 
-            new_levels[row["Level"]] = int(row["Rank"])
+    # Update ranked_cols in config
+    new_ranked_cols = {}
+    for _, row in edited_cols.iterrows():
+        if row["Column"] and row["MappingKey"]:
+            new_ranked_cols[row["Column"]] = row["MappingKey"]
+            # Ensure mapping exists
+            if row["MappingKey"] not in mappings:
+                mappings[row["MappingKey"]] = {}
+                
+    config["feature_engineering"]["ranked_cols"] = new_ranked_cols
+    
+    # 2. Edit Mappings
+    if new_ranked_cols:
+        st.markdown("##### Edit Mappings")
+        # specific mapping editor
+        # Get unique mapping keys
+        unique_keys = sorted(list(set(new_ranked_cols.values())))
+        
+        selected_key = st.selectbox("Select Mapping to Edit", unique_keys)
+        
+        if selected_key:
+            current_map = mappings.get(selected_key, {})
+            data = [{"Category": k, "Rank": v} for k, v in current_map.items()]
+            df_map = pd.DataFrame(data)
             
-    return new_levels
+            edited_map_df = st.data_editor(
+                df_map,
+                num_rows="dynamic",
+                key=f"mapping_editor_{selected_key}",
+                column_config={
+                    "Category": st.column_config.TextColumn("Category Name", required=True),
+                    "Rank": st.column_config.NumberColumn("Rank Value", required=True, step=1)
+                }
+            )
+            
+            new_map = {}
+            for _, row in edited_map_df.iterrows():
+                if row["Category"]:
+                     new_map[row["Category"]] = int(row["Rank"])
+            
+            mappings[selected_key] = new_map
 
 def render_location_targets_editor(config: Dict[str, Any]) -> Dict[str, int]:
     """Renders an editor for 'mappings.location_targets'.
@@ -365,7 +419,7 @@ def render_config_ui(config: Dict[str, Any]) -> Dict[str, Any]:
     if "mappings" not in new_config:
         new_config["mappings"] = {}
         
-    new_config["mappings"]["levels"] = render_levels_editor(new_config)
+    render_ranked_mappings_section(new_config)
     new_config["mappings"]["location_targets"] = render_location_targets_editor(new_config)
     new_config["location_settings"] = render_location_settings_editor(new_config)
     new_config["model"] = render_model_config_editor(new_config)

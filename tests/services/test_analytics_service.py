@@ -15,8 +15,8 @@ class TestAnalyticsService(unittest.TestCase):
         summary = self.service.get_data_summary(df)
         
         self.assertEqual(summary["total_samples"], 3)
-        self.assertEqual(summary["unique_locations"], 2)
-        self.assertEqual(summary["unique_levels"], 2)
+        self.assertEqual(summary["unique_location"], 2) # Location is object
+        self.assertEqual(summary["unique_level"], 2)    # Level is object
         self.assertEqual(summary["shape"], (3, 2))
 
     def test_get_available_targets(self):

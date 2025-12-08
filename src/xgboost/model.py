@@ -3,11 +3,11 @@ import optuna
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Union, Tuple, Any, Callable
-from src.xgboost.preprocessing import LevelEncoder, LocationEncoder, SampleWeighter
+from src.xgboost.preprocessing import RankedCategoryEncoder, ProximityEncoder, SampleWeighter
 from src.utils.config_loader import get_config
 from src.utils.logger import get_logger
 
-class SalaryForecaster:
+class QuantileForecaster:
     def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
         self.logger = get_logger(__name__)
         self.models: Dict[str, Any] = {}
@@ -16,49 +16,62 @@ class SalaryForecaster:
         if config is None:
             config = get_config()
         
+        self.config = config
         model_config = config["model"]
         self.model_config: Dict[str, Any] = model_config
         
         self.targets: List[str] = model_config["targets"]
         self.quantiles: List[float] = model_config["quantiles"]
         
-        self.level_encoder = LevelEncoder()
-        self.loc_encoder = LocationEncoder()
+        # Feature Engineering Setup
+        self.ranked_encoders: Dict[str, RankedCategoryEncoder] = {}
+        self.proximity_encoders: Dict[str, ProximityEncoder] = {}
         
+        fe_config = config.get("feature_engineering", {})
+        
+        # Fallback/Default if not configured
+        if not fe_config:
+            if "mappings" in config and "levels" in config["mappings"]:
+                 fe_config = {
+                     "ranked_cols": {"Level": "levels"},
+                     "proximity_cols": ["Location"]
+                 }
+        
+        for col, map_key in fe_config.get("ranked_cols", {}).items():
+            self.ranked_encoders[col] = RankedCategoryEncoder(config_key=map_key)
+            
+        for col in fe_config.get("proximity_cols", []):
+            self.proximity_encoders[col] = ProximityEncoder()
 
         k = model_config.get("sample_weight_k", 1.0)
-        self.weighter = SampleWeighter(k=k)
+        date_col = model_config.get("date_col", "Date")
+        self.weighter = SampleWeighter(k=k, date_col=date_col)
         
         self.features_config: List[Dict[str, Any]] = model_config["features"]
         self.feature_names: List[str] = [f["name"] for f in self.features_config]
         
     def _preprocess(self, X: pd.DataFrame) -> pd.DataFrame:
         X_proc = X.copy()
-        X_proc["Level_Enc"] = self.level_encoder.transform(X["Level"])
-        X_proc["Location_Enc"] = self.loc_encoder.transform(X["Location"])
         
-        # Select features for model based on config
-        # Note: Some features might be raw columns (YearsOfExperience) and some might be engineered (Level_Enc)
+        # Generic Feature Engineering
+        for col, encoder in self.ranked_encoders.items():
+            if col in X_proc.columns:
+                 X_proc[f"{col}_Enc"] = encoder.transform(X_proc[col])
+        
+        for col, encoder in self.proximity_encoders.items():
+            if col in X_proc.columns:
+                X_proc[f"{col}_Enc"] = encoder.transform(X_proc[col])
+        
+        # Ensure all required features exist (simple pass-through check)
+        missing_feats = [f for f in self.feature_names if f not in X_proc.columns]
+        if missing_feats:
+             for f in missing_feats:
+                 if f in X.columns:
+                     X_proc[f] = X[f]
 
-        
         return X_proc[self.feature_names]
 
-    def train(self, df, callback=None):
-        """
-        Trains the XGBoost models.
-        
-        Args:
-            df (pd.DataFrame): Training data.
-            callback (callable, optional): function(status_msg, result_data=None).
-                                          status_msg is a string or formatted object.
-                                          result_data is a dict with extra info (like cv scores).
-        """
-        X = self._preprocess(df)
-        weights = self.weighter.transform(df["Date"])
-        
-        constraints = [f["monotone_constraint"] for f in self.features_config]
-        monotone_constraints = str(tuple(constraints))
-        return constraints, monotone_constraints
+    # Removed stub train method
 
     def remove_outliers(self, df: pd.DataFrame, method: str = "iqr", threshold: float = 1.5) -> Tuple[pd.DataFrame, int]:
         """
@@ -123,7 +136,7 @@ class SalaryForecaster:
                 self.logger.info(msg)
                 
         X = self._preprocess(df)
-        weights = self.weighter.transform(df["Date"])
+        weights = self.weighter.transform(df)
         
         constraints = [f["monotone_constraint"] for f in self.features_config]
         monotone_constraints = str(tuple(constraints))
@@ -210,7 +223,7 @@ class SalaryForecaster:
         optuna.logging.set_verbosity(optuna.logging.WARNING)
         
         X = self._preprocess(df)
-        weights = self.weighter.transform(df["Date"])
+        weights = self.weighter.transform(df)
         
         target = self.targets[0]
         y = df[target]
@@ -303,3 +316,6 @@ class SalaryForecaster:
         best_score = float(cv_results[metric_name].min())
         
         return best_round, best_score
+
+# Backward Compatibility Aliases
+SalaryForecaster = QuantileForecaster

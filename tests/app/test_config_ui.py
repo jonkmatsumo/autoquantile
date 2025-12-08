@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 import pandas as pd
 from src.app.config_ui import (
-    render_levels_editor, 
+    render_ranked_mappings_section, 
     render_location_targets_editor, 
     render_location_settings_editor, 
     render_config_ui,
@@ -18,25 +18,47 @@ def sample_config():
             "levels": {"E3": 0, "E4": 1},
             "location_targets": {"New York": 1, "Austin": 2}
         },
+        "feature_engineering": {
+            "ranked_cols": {"Level": "levels"},
+            "proximity_cols": ["Location"]
+        },
         "location_settings": {"max_distance_km": 50}
     }
 
-def test_render_levels_editor(sample_config):
+def test_render_ranked_mappings_section(sample_config):
     with patch("src.app.config_ui.st") as mock_st:
-        # Mock data_editor return value (dataframe)
-        mock_df = pd.DataFrame([
-            {"Level": "E3", "Rank": 0},
-            {"Level": "E4", "Rank": 1},
-            {"Level": "E5", "Rank": 2} # Added one
+        # Mocking data_editor for generic ranked cols
+        # 1. First call: Mapped Columns Editor
+        # 2. Second call: Mapping Editor for specific key (if selected)
+        
+        # We need to simulate the flow. 
+        # First st.data_editor call returns the columns dataframe
+        # Second call returns the mapping dataframe (if we set formatting)
+        
+        mock_df_cols = pd.DataFrame([
+            {"Column": "Level", "MappingKey": "levels"}
         ])
-        mock_st.data_editor.return_value = mock_df
         
-        updated_levels = render_levels_editor(sample_config)
+        mock_df_map = pd.DataFrame([
+             {"Category": "E3", "Rank": 0},
+             {"Category": "E4", "Rank": 1},
+             {"Category": "E5", "Rank": 2}
+        ])
         
-        mock_st.subheader.assert_called_with("Levels Configuration")
-        mock_st.data_editor.assert_called_once()
+        mock_st.data_editor.side_effect = [mock_df_cols, mock_df_map]
         
-        assert updated_levels == {"E3": 0, "E4": 1, "E5": 2}
+        # Selectbox choice
+        mock_st.selectbox.return_value = "levels"
+        
+        render_ranked_mappings_section(sample_config)
+        
+        mock_st.subheader.assert_called_with("Ranked Categories")
+        
+        # Verify Mappings Updated
+        assert sample_config["mappings"]["levels"] == {"E3": 0, "E4": 1, "E5": 2}
+        
+        # Verify Columns Updated
+        assert sample_config["feature_engineering"]["ranked_cols"] == {"Level": "levels"}
 
 def test_render_location_targets_editor(sample_config):
     with patch("src.app.config_ui.st") as mock_st:
@@ -68,7 +90,7 @@ def test_render_location_settings_editor(sample_config):
 def test_render_config_ui(sample_config):
     # Integration test of the wrapper
     with patch("src.app.config_ui.st") as mock_st, \
-         patch("src.app.config_ui.render_levels_editor") as mock_levels, \
+         patch("src.app.config_ui.render_ranked_mappings_section") as mock_ranked, \
          patch("src.app.config_ui.render_location_targets_editor") as mock_loc, \
          patch("src.app.config_ui.render_location_settings_editor") as mock_settings, \
          patch("src.app.config_ui.render_model_config_editor") as mock_model, \
@@ -76,7 +98,11 @@ def test_render_config_ui(sample_config):
          patch("src.app.config_ui.validate_csv"), \
          patch("src.app.config_ui.ConfigGenerator"):
          
-        mock_levels.return_value = {"L": 1}
+        # Mock side effect to update config for ranked
+        def update_ranked(c):
+             c["mappings"]["levels"] = {"L": 1}
+        mock_ranked.side_effect = update_ranked
+        
         mock_loc.return_value = {"C": 2}
         mock_settings.return_value = {"dist": 99}
         mock_model.return_value = {"targets": []}
@@ -108,7 +134,7 @@ def test_render_config_ui_generator_section(sample_config):
     with patch("src.app.config_ui.st") as mock_st, \
          patch("src.app.config_ui.ConfigGenerator") as MockGenerator, \
          patch("src.app.config_ui.validate_csv") as mock_validate, \
-         patch("src.app.config_ui.render_levels_editor"), \
+         patch("src.app.config_ui.render_ranked_mappings_section"), \
          patch("src.app.config_ui.render_location_targets_editor"), \
          patch("src.app.config_ui.render_location_settings_editor"), \
          patch("src.app.config_ui.render_model_config_editor"), \
@@ -155,7 +181,7 @@ def test_render_config_ui_generator_upload_flow(sample_config):
     with patch("src.app.config_ui.st") as mock_st, \
          patch("src.app.config_ui.ConfigGenerator") as MockGenerator, \
          patch("src.app.config_ui.validate_csv") as mock_validate, \
-         patch("src.app.config_ui.render_levels_editor"), \
+         patch("src.app.config_ui.render_ranked_mappings_section"), \
          patch("src.app.config_ui.render_location_targets_editor"), \
          patch("src.app.config_ui.render_location_settings_editor"), \
          patch("src.app.config_ui.render_model_config_editor"), \
@@ -289,7 +315,7 @@ def test_render_config_ui_uses_override(sample_config):
     }
     
     with patch("src.app.config_ui.st") as mock_st, \
-         patch("src.app.config_ui.render_levels_editor") as mock_levels, \
+         patch("src.app.config_ui.render_ranked_mappings_section") as mock_ranked, \
          patch("src.app.config_ui.render_location_targets_editor") as mock_loc, \
          patch("src.app.config_ui.render_location_settings_editor") as mock_settings, \
          patch("src.app.config_ui.render_model_config_editor") as mock_model, \
@@ -297,8 +323,7 @@ def test_render_config_ui_uses_override(sample_config):
          patch("src.app.config_ui.validate_csv"), \
          patch("src.app.config_ui.ConfigGenerator"):
 
-        # Use side_effects to return the existing values so config isn't mutated to empty
-        mock_levels.side_effect = lambda c: c["mappings"].get("levels", {})
+        # Use side_effects to return the existing values
         mock_loc.side_effect = lambda c: c["mappings"].get("location_targets", {})
         mock_settings.side_effect = lambda c: c.get("location_settings", {})
         mock_model.side_effect = lambda c: c.get("model", {})
@@ -317,9 +342,8 @@ def test_render_config_ui_uses_override(sample_config):
 
         render_config_ui(sample_config) # pass sample, but expect override used
         
-        # Check that render_levels_editor was called with OVERRIDE config, not sample
-        # We need to verify the arguments passed to the sub-helpers
-        args, _ = mock_levels.call_args
+        # Check that render_ranked_mappings_section was called with OVERRIDE config
+        args, _ = mock_ranked.call_args
         assert args[0] == override_config
 
 

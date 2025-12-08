@@ -14,13 +14,19 @@ class AnalyticsService:
         if df is None or df.empty:
             return {}
             
-        return {
+        summary = {
             "total_samples": len(df),
-            "unique_locations": df["Location"].nunique() if "Location" in df.columns else 0,
-            "unique_levels": df["Level"].nunique() if "Level" in df.columns else 0,
             "shape": df.shape
         }
-
+        
+        # Add unique counts for object/categorical columns
+        cat_cols = df.select_dtypes(include=['object', 'category']).columns
+        for col in cat_cols:
+            # clean string to be key-friendly
+            key_name = f"unique_{col.lower().replace(' ', '_')}"
+            summary[key_name] = df[col].nunique()
+            
+        return summary
     def get_feature_importance(self, model: SalaryForecaster, target: str, quantile_val: float) -> Optional[pd.DataFrame]:
         """Extracts feature importance (Gain) for a specific target/quantile model."""
         model_name = f"{target}_p{int(quantile_val*100)}"

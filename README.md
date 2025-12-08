@@ -3,11 +3,11 @@
 A comprehensive framework for **Multi-Target Quantile Regression** using **XGBoost**. It automates the complex lifecycle of probabilistic modeling—from feature engineering and monotonic constraint enforcement to hyperparameter tuning and model versioning.
 
 Key features include:
-- **Automated Version Control**: Automatically tracks and versions trained models using **MLFlow**.
+- **Automated Versioning**: Automatically tracks and versions trained models using **MLFlow**.
 - **Auto-Tuning**: Integrated Hyperparameter Optimization using **Optuna** to automatically find the best model parameters.
-- **LLM-Assisted Configuration**: Uses Generative AI to intelligently infer column roles and level hierarchies from data.
+- **LLM-Assisted Feature Engineering**: Uses Generative AI to intelligently infer feature and target variables, along with encodings and monotonic constraints.
+- **Outlier Detection** (IQR) to filter extreme data points and improve model generalization.
 - **Proximity Matching**: Geo-spatial grouping of cities into cost zones.
-- **Robustness**: **Outlier Detection** (IQR) to filter extreme data points and improve model generalization.
 
 ## Installation
 

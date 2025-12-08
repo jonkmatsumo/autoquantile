@@ -2,48 +2,40 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import patch, MagicMock
-from src.xgboost.preprocessing import LevelEncoder, LocationEncoder, SampleWeighter
+from src.xgboost.preprocessing import RankedCategoryEncoder, ProximityEncoder, SampleWeighter
 
-# --- LevelEncoder Tests ---
+# --- RankedCategoryEncoder Tests ---
 
-def test_level_encoder_transform():
-    mock_config = {
-        "mappings": {
-            "levels": {"E3": 0, "E4": 1, "E5": 2}
-        }
-    }
-    with patch('src.xgboost.preprocessing.get_config', return_value=mock_config):
-        encoder = LevelEncoder()
-        
-        # Test Series input
-        X = pd.Series(["E3", "E5", "E4", "Unknown"])
-        result = encoder.transform(X)
-        
-        expected = np.array([0, 2, 1, -1])
-        np.testing.assert_array_equal(result, expected)
+def test_ranked_encoder_transform():
+    mapping = {"E3": 0, "E4": 1, "E5": 2}
+    
+    # Test with direct mapping
+    encoder = RankedCategoryEncoder(mapping=mapping)
+    
+    # Test Series input
+    X = pd.Series(["E3", "E5", "E4", "Unknown"])
+    result = encoder.transform(X)
+    
+    expected = np.array([0, 2, 1, -1])
+    np.testing.assert_array_equal(result, expected)
 
-def test_level_encoder_dataframe_input():
-    mock_config = {
-        "mappings": {
-            "levels": {"E3": 0}
-        }
-    }
-    with patch('src.xgboost.preprocessing.get_config', return_value=mock_config):
-        encoder = LevelEncoder()
-        df = pd.DataFrame({"Level": ["E3"]})
-        result = encoder.transform(df)
-        assert result[0] == 0
+def test_ranked_encoder_dataframe_input():
+    mapping = {"E3": 0}
+    encoder = RankedCategoryEncoder(mapping=mapping)
+    df = pd.DataFrame({"Level": ["E3"]})
+    result = encoder.transform(df)
+    assert result[0] == 0
 
-# --- LocationEncoder Tests ---
+# --- ProximityEncoder Tests ---
 
-def test_location_encoder_transform():
+def test_proximity_encoder_transform():
     # Mock GeoMapper
     with patch('src.xgboost.preprocessing.GeoMapper') as MockGeoMapper:
         mock_mapper = MockGeoMapper.return_value
         # Setup mock behavior: NY -> 1, SF -> 2, Unknown -> 4
         mock_mapper.get_zone.side_effect = lambda x: 1 if x == "NY" else (2 if x == "SF" else 4)
         
-        encoder = LocationEncoder()
+        encoder = ProximityEncoder()
         
         X = pd.Series(["NY", "SF", "Other", 123]) # 123 to test non-string
         result = encoder.transform(X)
@@ -73,23 +65,18 @@ def test_sample_weighter_future_dates():
     weights = weighter.transform(dates)
     assert weights[0] == 1.0
 
-def test_level_encoder_edge_cases():
-    mock_config = {
-        "mappings": {
-            "levels": {"E3": 0}
-        }
-    }
-    with patch('src.xgboost.preprocessing.get_config', return_value=mock_config):
-        encoder = LevelEncoder()
-        
-        # Test with None, NaN, Empty string - should map to -1 (unknown)
-        X = pd.Series([None, np.nan, "", "Unknown"])
-        result = encoder.transform(X)
-        
-        expected = np.array([-1, -1, -1, -1])
-        np.testing.assert_array_equal(result, expected)
+def test_ranked_encoder_edge_cases():
+    mapping = {"E3": 0}
+    encoder = RankedCategoryEncoder(mapping=mapping)
+    
+    # Test with None, NaN, Empty string - should map to -1 (unknown)
+    X = pd.Series([None, np.nan, "", "Unknown"])
+    result = encoder.transform(X)
+    
+    expected = np.array([-1, -1, -1, -1])
+    np.testing.assert_array_equal(result, expected)
 
-def test_location_encoder_edge_cases():
+def test_proximity_encoder_edge_cases():
     with patch('src.xgboost.preprocessing.GeoMapper') as MockGeoMapper:
         mock_mapper = MockGeoMapper.return_value
         # If input is not a string (e.g. NaN), get_zone might not even be called if we handle it in transform
@@ -99,7 +86,7 @@ def test_location_encoder_edge_cases():
         #     if not isinstance(loc, str): return 4
         #     return self.mapper.get_zone(loc)
         
-        encoder = LocationEncoder()
+        encoder = ProximityEncoder()
         
         # None, NaN -> Should return 4 (Unknown) without calling mapper.get_zone
         X = pd.Series([None, np.nan, 123])
