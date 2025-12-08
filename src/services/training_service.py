@@ -42,7 +42,7 @@ class TrainingService:
         best_params = forecaster.tune(data, n_trials=n_trials)
         return best_params
 
-    # --- Async Methods ---
+
 
     def start_training_async(self, 
                            data: pd.DataFrame, 
@@ -83,7 +83,7 @@ class TrainingService:
     def _run_async_job(self, job_id: str, data: pd.DataFrame, remove_outliers: bool, do_tune: bool, n_trials: int):
         """Internal worker method."""
         
-        # Local callback to capture logs into the job state
+
         def _async_callback(msg: str, data: Optional[Dict[str, Any]] = None):
             with self._lock:
                 if job_id in self._jobs:
@@ -93,7 +93,8 @@ class TrainingService:
                         # Log CV scores as metrics if available
                         if data.get("stage") == "cv_end":
                             score = data.get("best_score")
-                            self._jobs[job_id]["scores"].append(score) # Track scores
+                            self._jobs[job_id]["scores"].append(score)
+
                             try:
                                 mlflow.log_metric("cv_score", score)
                             except:
@@ -107,11 +108,11 @@ class TrainingService:
             
             self.logger.info(f"Starting async training job: {job_id}")
 
-            # Start MLflow Run
+
             mlflow.set_experiment("Salary_Forecast")
             with mlflow.start_run(run_name=f"Training_{job_id}") as run:
                 
-                # Log Params
+
                 mlflow.log_params({
                     "remove_outliers": remove_outliers,
                     "do_tune": do_tune,
@@ -130,7 +131,7 @@ class TrainingService:
                 _async_callback("Starting training...")
                 forecaster.train(data, callback=_async_callback, remove_outliers=remove_outliers)
                 
-                # Log Model
+
                 wrapper = SalaryForecasterWrapper(forecaster)
                 mlflow.pyfunc.log_model(
                     artifact_path="model",
@@ -138,19 +139,20 @@ class TrainingService:
                     pip_requirements=["xgboost", "pandas", "scikit-learn"]
                 )
                 
-                # Log final metrics if available
+
                 scores = self._jobs[job_id].get("scores", [])
                 if scores:
                     mean_score = np.mean(scores)
                     mlflow.log_metric("cv_mean_score", mean_score)
                     self.logger.info(f"Job {job_id} finished. CV Mean Score: {mean_score:.4f}")
                 
-                # mlflow.log_metric("final_mae", ...) # Forecaster doesn't expose test metrics yet
+
                 
                 with self._lock:
                     self._jobs[job_id]["status"] = "COMPLETED"
                     self._jobs[job_id]["result"] = forecaster
-                    self._jobs[job_id]["run_id"] = run.info.run_id # Store Run ID
+                    self._jobs[job_id]["run_id"] = run.info.run_id
+
                     self._jobs[job_id]["completed_at"] = datetime.now()
                 
         except Exception as e:

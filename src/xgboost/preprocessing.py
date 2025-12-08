@@ -11,9 +11,9 @@ class LevelEncoder:
         mapping (dict): Dictionary mapping level names to integer ranks.
     """
     def __init__(self) -> None:
-        """Initializes the encoder by loading mappings from configuration."""
         config = get_config()
         self.mapping = config["mappings"]["levels"]
+
 
     def fit(self, X: Any, y: Optional[Any] = None) -> "LevelEncoder":
         """Fits the encoder (no-op as mapping is static).
@@ -49,8 +49,8 @@ class LocationEncoder:
         mapper (GeoMapper): Utility to calculate proximity zones.
     """
     def __init__(self) -> None:
-        """Initializes the encoder with a GeoMapper instance."""
         self.mapper = GeoMapper()
+
 
     def fit(self, X: Any, y: Optional[Any] = None) -> "LocationEncoder":
         """Fits the encoder (no-op).

@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
-# Ensure src can be imported if running from inside src/app or root
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
 from src.utils.compatibility import apply_backward_compatibility
@@ -23,10 +23,9 @@ from src.utils.config_loader import get_config
 from src.app.caching import load_data_cached as load_data
 from src.utils.logger import setup_logging
 
-# Services
+
 from src.services.model_registry import ModelRegistry
-# TrainingService now used in train_ui.py so not needed here unless for type hinting elsewhere, 
-# but we removed the logic so likely not needed.
+
 
 
 def render_inference_ui() -> None:
@@ -35,17 +34,15 @@ def render_inference_ui() -> None:
     
     registry = ModelRegistry()
     
-    # Check if model is loaded
-    # MLflow returns runs, not file paths. 
-    # We display: "RunID (Date) - Metric"
-    runs = registry.list_models() # List of dicts
+    # Display format: "RunID (Date) - Metric"
+    runs = registry.list_models()
+
     
     if not runs:
         st.warning("No trained models found in MLflow. Please train a new model.")
         return
 
-    # Create display labels
-    # Create display labels
+
     def fmt_score(x):
         try:
             return f"{float(x):.4f}"
@@ -61,7 +58,7 @@ def render_inference_ui() -> None:
         
     run_id = run_options[selected_label]
     
-    # Load Model
+
     if "forecaster" not in st.session_state or st.session_state.get("current_run_id") != run_id:
         with st.spinner(f"Loading model from MLflow run {run_id}..."):
             try:
@@ -112,12 +109,12 @@ def render_inference_ui() -> None:
                 
             res_df = pd.DataFrame(res_data)
             
-            # 1. Visualization (Interactive Line Chart)
-            # We want X-axis = Percentiles (p10, p25...), Lines = Components
+            # Visualization (Interactive Line Chart)
+            # X-axis = Percentiles (p10, p25...), Lines = Components
             chart_df = res_df.set_index("Component").T
             
-            # Sort index (percentiles) numerically to ensure correct order (e.g. p5 vs p10)
-            # Index is currently strings like "p10", "p25"
+            # Sort index (percentiles) numerically
+
             try:
                 # Extract integer part for sorting
                 sorted_index = sorted(chart_df.index, key=lambda x: int(x.replace("p", "")))
@@ -128,7 +125,7 @@ def render_inference_ui() -> None:
                 
             st.line_chart(chart_df)
             
-            # 2. Table
+
             st.dataframe(res_df.style.format({c: "${:,.0f}" for c in res_df.columns if c != "Component"}))
 
 
@@ -137,13 +134,13 @@ def main() -> None:
     """Main entry point for the Streamlit application."""
     st.set_page_config(page_title="Salary Forecaster", layout="wide")
     
-    # Initialize
     config = get_config()
     st.session_state["config_override"] = config
+
     
     st.sidebar.title("Navigation")
     
-    # Use session state for nav persistence if needed, but sidebar widget handles it
+
     if "nav" not in st.session_state:
         st.session_state["nav"] = "Inference"
         
@@ -154,7 +151,7 @@ def main() -> None:
         
     nav = st.sidebar.radio("Go to", options, index=default_index, key="nav_radio")
     
-    # Update session state to match
+
     st.session_state["nav"] = nav
     
     if nav == "Inference":

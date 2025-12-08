@@ -13,10 +13,7 @@ class ConfigGenerator:
     def infer_levels(self, df: pd.DataFrame, level_col: str = "Level") -> Dict[str, int]:
         """Infers level ranking based on heuristics.
         
-        Logic:
-        1. Extract first integer found in string (e.g. "E5" -> 5, "L3" -> 3).
-        2. Sort by integer, then by string.
-        3. If no integer, sort alphabetically.
+
         """
         if level_col not in df.columns:
             return {}
@@ -31,7 +28,7 @@ class ConfigGenerator:
             return -1 # Default low rank for non-numeric levels
             
         # Sort tuple: (extracted_rank, string_val)
-        # We assume higher number = higher rank usually
+
         sorted_levels = sorted(unique_levels, key=lambda x: (extract_rank(x), x))
         
         # Map to 0-indexed rank
@@ -43,7 +40,8 @@ class ConfigGenerator:
             return {}
             
         unique_locs = sorted(df[loc_col].dropna().unique().tolist())
-        return {loc: 2 for loc in unique_locs} # Default tier 2
+        return {loc: 2 for loc in unique_locs}
+
 
     CONFIG_TEMPLATE = {
         "mappings": {

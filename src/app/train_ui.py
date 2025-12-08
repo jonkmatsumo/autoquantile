@@ -5,7 +5,7 @@ from src.app.caching import load_data_cached as load_data
 from src.services.training_service import TrainingService
 from src.services.model_registry import ModelRegistry
 
-# Service Singleton
+
 @st.cache_resource
 def get_training_service() -> TrainingService:
     return TrainingService()
@@ -16,7 +16,7 @@ def render_training_ui() -> None:
     
     st.info("Configure settings in 'Configuration' page before training.")
     
-    # 1. Shared Data Loading
+
     df = None
     if "training_data" in st.session_state:
         df = st.session_state["training_data"]
@@ -29,7 +29,8 @@ def render_training_ui() -> None:
         if uploaded_file:
             try:
                 df = load_data(uploaded_file)
-                st.session_state["training_data"] = df # Cache it
+                st.session_state["training_data"] = df
+
                 st.success(f"Loaded {len(df)} rows.")
                 st.info("💡 **Tip**: If this is a new dataset, go to the **Configuration** page to generate an optimal config.")
             except Exception as e:
@@ -42,22 +43,22 @@ def render_training_ui() -> None:
         
     remove_outliers = st.checkbox("Remove Outliers (IQR)", value=True)
     
-    # Restored: Chart option for post-training display
+
     display_charts = st.checkbox("Show Training Performance Chart", value=True)
     
     custom_name = st.text_input("Model Output Filename (Optional)", placeholder="e.g. my_custom_model.pkl")
     
-    # Initialize Service
+
     training_service = get_training_service()
     registry = ModelRegistry()
 
-    # Job State Management
+
     if "training_job_id" not in st.session_state:
         st.session_state["training_job_id"] = None
         
     job_id = st.session_state["training_job_id"]
 
-    # Start Button
+
     if job_id is None:
         if st.button("Start Training (Async)"):
             if df is None:
@@ -73,7 +74,7 @@ def render_training_ui() -> None:
             st.session_state["training_job_id"] = job_id
             st.rerun()
 
-    # Polling & Status Display
+
     else:
         status = training_service.get_job_status(job_id)
         
@@ -86,22 +87,23 @@ def render_training_ui() -> None:
         state = status["status"]
         st.info(f"Training Status: **{state}**")
         
-        # Progress Bar / Spinner equivalent
+
         if state in ["QUEUED", "RUNNING"]:
             with st.spinner("Training in progress... (You can switch tabs, but stay in app to see completion)"):
                 # Poll every 2 seconds
                 time.sleep(2) 
                 st.rerun()
                 
-        # Show Logs
+
         with st.expander("Training Logs", expanded=(state != "COMPLETED")):
             st.code("\n".join(status["logs"]))
 
-        # Completion Handling
+
         if state == "COMPLETED":
             st.success("Training Finished Successfully!")
             
-            # --- Result Visualization ---
+            # Result Visualization
+
             history = status.get("history", [])
             results_data = []
             
@@ -118,7 +120,7 @@ def render_training_ui() -> None:
                 if display_charts:
                     st.line_chart(res_df.set_index("Model")["Score"])
                 st.dataframe(res_df.style.format({"Score": "{:.4f}"}))
-            # ---------------------------
+
             
             forecaster = status["result"]
             run_id = status.get("run_id", "N/A")

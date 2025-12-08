@@ -29,14 +29,14 @@ class LLMService:
         if not self.client:
             raise RuntimeError("LLM Client not initialized. Check API keys.")
 
-        # Prepare sample
+
         sample = df.head(50).to_csv(index=False)
         dtypes = df.dtypes.to_string()
         
         user_prompt_template = load_prompt("config_generation_user")
         system_prompt = load_prompt("config_generation_system")
         
-        # Load preset if specified
+
         preset_content = ""
         if preset and preset.lower() != "none":
             try:
@@ -44,7 +44,7 @@ class LLMService:
             except Exception as e:
                 self.logger.warning(f"Failed to load preset '{preset}': {e}")
         
-        # Inject preset into system prompt
+
         if preset_content:
             system_prompt += f"\n\n{preset_content}"
         
@@ -54,11 +54,11 @@ class LLMService:
         response_text = self.client.generate(prompt, system_prompt=system_prompt)
         
         try:
-            # Basic parsing
+
             cleaned_text = response_text.replace("```json", "").replace("```", "").strip()
             config_dict = json.loads(cleaned_text)
             
-            # Pydantic Validation
+
             validated_config = Config.model_validate(config_dict)
             self.logger.info("Successfully generated and validated config from LLM.")
             return validated_config.model_dump()

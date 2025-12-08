@@ -13,12 +13,12 @@ def render_model_analysis_ui() -> None:
     
     registry = ModelRegistry()
     
-    runs = registry.list_models() # List of dicts
+    runs = registry.list_models()
+
     if not runs:
         st.warning("No models found in MLflow. Please train a new model.")
         return
 
-    # Create display labels
     # Create display labels
     def fmt_score(x):
         try:
@@ -60,7 +60,7 @@ def render_model_analysis_ui() -> None:
             else:
                 st.dataframe(df_imp, width="stretch")
                 
-                # Plot
+
                 fig, ax = plt.subplots(figsize=(10, 6))
                 sns.barplot(data=df_imp.head(20), x="Gain", y="Feature", ax=ax, palette="viridis", hue="Feature", legend=False)
                 ax.set_title(f"Top 20 Features for {selected_target} (P{int(selected_q_val*100)})")

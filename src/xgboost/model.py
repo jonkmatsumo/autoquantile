@@ -12,6 +12,7 @@ class SalaryForecaster:
         self.logger = get_logger(__name__)
         self.models: Dict[str, Any] = {}
         # Use provided config or load from disk
+
         if config is None:
             config = get_config()
         
@@ -24,7 +25,7 @@ class SalaryForecaster:
         self.level_encoder = LevelEncoder()
         self.loc_encoder = LocationEncoder()
         
-        # Use k from config or default to 1.0 if not present
+
         k = model_config.get("sample_weight_k", 1.0)
         self.weighter = SampleWeighter(k=k)
         
@@ -38,9 +39,7 @@ class SalaryForecaster:
         
         # Select features for model based on config
         # Note: Some features might be raw columns (YearsOfExperience) and some might be engineered (Level_Enc)
-        # The config lists the final feature names.
-        # We need to ensure X_proc has all of them.
-        # Assuming input X has "YearsOfExperience" and "YearsAtCompany" already.
+
         
         return X_proc[self.feature_names]
 
@@ -93,8 +92,7 @@ class SalaryForecaster:
                 upper_bound = q3 + threshold * iqr
                 
                 # Update mask: Keep row if it's within bounds for THIS target
-                # We want to remove row if ANY target is outlier? Or all?
-                # Usually if ANY target is bad, the row is suspicious.
+
                 col_mask = (df_clean[target] >= lower_bound) & (df_clean[target] <= upper_bound)
                 mask = mask & col_mask
                 

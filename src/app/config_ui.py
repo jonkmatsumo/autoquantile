@@ -144,7 +144,7 @@ def render_model_config_editor(config: Dict[str, Any]) -> Dict[str, Any]:
     
     model_config = config.get("model", {})
     
-    # Targets configuration
+
     defaults_targets = ["BaseSalary", "Stock", "Bonus", "TotalComp"]
     current_targets = model_config.get("targets", defaults_targets)
     
@@ -161,7 +161,7 @@ def render_model_config_editor(config: Dict[str, Any]) -> Dict[str, Any]:
     )
     new_targets = [row["Target"] for _, row in edited_targets_df.iterrows() if row["Target"]]
     
-    # Quantiles configuration
+
     defaults_quantiles = [0.1, 0.25, 0.50, 0.75, 0.9]
     current_quantiles = model_config.get("quantiles", defaults_quantiles)
     
@@ -178,7 +178,7 @@ def render_model_config_editor(config: Dict[str, Any]) -> Dict[str, Any]:
     )
     new_quantiles = [float(row["Quantile"]) for _, row in edited_quantiles_df.iterrows()]
     
-    # Sample Weight configuration
+
     default_k = 1.0
     current_k = model_config.get("sample_weight_k", default_k)
     new_k = st.number_input(
@@ -263,7 +263,7 @@ def render_config_ui(config: Dict[str, Any]) -> Dict[str, Any]:
     with st.expander("Generate Configuration from Data", expanded=False):
         st.write("Automatically generate a configuration by analyzing your dataset.")
         
-        # Data Selection
+
         data_source = st.radio("Data Source", ["Use Loaded Training Data", "Upload New CSV"], horizontal=True)
         
         df_to_analyze = None
@@ -284,7 +284,7 @@ def render_config_ui(config: Dict[str, Any]) -> Dict[str, Any]:
                 else:
                     st.error(f"Invalid CSV: {err}")
 
-        # AI Settings
+
         use_ai = st.checkbox("Use AI (LLM)", value=True, help="Use Large Language Model to infer configuration. Uncheck to use simple heuristics.")
         
         preset = "none"

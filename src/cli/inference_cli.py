@@ -49,6 +49,7 @@ def format_currency(val: float) -> str:
 
 def collect_user_data() -> pd.DataFrame:
     """Interactive prompt for candidate details."""
+
     print("\n--- Enter Candidate Details ---")
     level = get_input("Level (e.g. E3, E4, E5, E6, E7): ", str, ["E3", "E4", "E5", "E6", "E7"])
     location = get_input("Location (e.g. New York, San Francisco): ", str)
@@ -66,13 +67,14 @@ from src.services.model_registry import ModelRegistry
 
 def select_model(console: Console, registry: ModelRegistry) -> str:
     """Interactive model selection from MLflow runs."""
+
     runs = registry.list_models()
     if not runs:
         console.print("[bold red]No trained models found in MLflow.[/bold red]")
         console.print("Please run the training CLI or App first.")
         sys.exit(1)
         
-    # Simplify for CLI display
+
     console.print("\n[bold]Available Runs:[/bold]")
     run_map = []
     
@@ -139,6 +141,7 @@ def main():
         run_id = args.run_id
     else:
         # Interactive selection
+
         run_id = select_model(console, registry)
 
     if not args.json:
@@ -156,6 +159,7 @@ def main():
     
     # 2. Input Collection
     # Check if we have enough args for non-interactive mode
+
     non_interactive = all([args.level, args.location, args.yoe is not None, args.yac is not None])
     
     if non_interactive:
@@ -168,7 +172,7 @@ def main():
         run_once = True
     else:
         # Partially supplied args? Warn or Error?
-        # If some are supplied but not all, we could ask for the rest, but simpler to just enforce all-or-nothing for automation.
+
         if any([args.level, args.location, args.yoe, args.yac]):
              console.print("[bold red]Error: For non-interactive mode, you must supply --level, --location, --yoe, and --yac.[/bold red]")
              sys.exit(1)
@@ -176,6 +180,7 @@ def main():
         run_once = False
         
     # Main Loop (runs once if non-interactive)
+
     while True:
         try:
             if not non_interactive:
@@ -199,7 +204,7 @@ def main():
                 print(json.dumps(json_out, indent=2))
             else:
                 # Viz and Table
-                # Dynamically add columns based on model quantiles
+
                 quantiles = sorted(model.quantiles)
                 quantile_labels = [get_ordinal_suffix(int(q * 100)) for q in quantiles]
     

@@ -112,8 +112,7 @@ def train_workflow(csv_path: str, config_path: str, output_path: str, console: A
                 "data_rows": len(df)
             })
             
-            # Log final metrics? We rely on console_callback implicitly, but it's hard to extract best here without returning from train.
-            # Ideally SalaryForecaster should expose metrics.
+
             
             # Log Model
             wrapper = SalaryForecasterWrapper(forecaster)
