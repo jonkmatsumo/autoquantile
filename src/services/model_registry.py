@@ -9,7 +9,7 @@ class SalaryForecasterWrapper(PythonModel):
     """Wrapper for MLflow persistence of SalaryForecaster."""
     def __init__(self, forecaster):
         self.forecaster = forecaster
-    def predict(self, context, model_input: List[Any]):
+    def predict(self, context, model_input):
         return self.forecaster.predict(model_input)
     def unwrap_python_model(self):
         return self.forecaster
