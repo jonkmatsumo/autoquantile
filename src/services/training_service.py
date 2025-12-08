@@ -74,6 +74,8 @@ class TrainingService:
 
     def _run_async_job(self, job_id: str, data: pd.DataFrame, remove_outliers: bool, do_tune: bool, n_trials: int):
         """Internal worker method."""
+        import mlflow
+        from src.services.model_registry import SalaryForecasterWrapper
         
         # Local callback to capture logs into the job state
         def _async_callback(msg: str, data: Optional[Dict[str, Any]] = None):
@@ -82,26 +84,59 @@ class TrainingService:
                     self._jobs[job_id]["logs"].append(msg)
                     if data:
                         self._jobs[job_id]["history"].append(data)
-                    # We could store intermediate data here too if needed
+                        # Log CV scores as metrics if available
+                        if data.get("stage") == "cv_end":
+                            # We can't log metrics to MLflow safely from thread without active run context
+                            # But we will have active run context below!
+                            try:
+                                mlflow.log_metric("cv_score", data.get("best_score"))
+                            except:
+                                pass # Ignore if no active run
+                    
                     self._jobs[job_id]["last_update"] = datetime.now()
 
         try:
             with self._lock:
                 self._jobs[job_id]["status"] = "RUNNING"
-                
-            forecaster = SalaryForecaster()
             
-            if do_tune:
-                _async_callback(f"Starting tuning with {n_trials} trials...")
-                forecaster.tune(data, n_trials=n_trials)
+            # Start MLflow Run
+            mlflow.set_experiment("Salary_Forecast")
+            with mlflow.start_run(run_name=f"Training_{job_id}") as run:
                 
-            _async_callback("Starting training...")
-            forecaster.train(data, callback=_async_callback, remove_outliers=remove_outliers)
-            
-            with self._lock:
-                self._jobs[job_id]["status"] = "COMPLETED"
-                self._jobs[job_id]["result"] = forecaster
-                self._jobs[job_id]["completed_at"] = datetime.now()
+                # Log Params
+                mlflow.log_params({
+                    "remove_outliers": remove_outliers,
+                    "do_tune": do_tune,
+                    "n_trials": n_trials if do_tune else 0,
+                    "data_rows": len(data)
+                })
+                
+                forecaster = SalaryForecaster()
+                
+                if do_tune:
+                    _async_callback(f"Starting tuning with {n_trials} trials...")
+                    best_params = forecaster.tune(data, n_trials=n_trials)
+                    mlflow.log_params(best_params)
+                    
+                _async_callback("Starting training...")
+                forecaster.train(data, callback=_async_callback, remove_outliers=remove_outliers)
+                
+                # Log Model
+                wrapper = SalaryForecasterWrapper(forecaster)
+                mlflow.pyfunc.log_model(
+                    artifact_path="model",
+                    python_model=wrapper,
+                    pip_requirements=["xgboost", "pandas", "scikit-learn"]
+                )
+                
+                # Log final metrics if available
+                # mlflow.log_metric("final_mae", ...) # Forecaster doesn't expose test metrics yet
+                
+                with self._lock:
+                    self._jobs[job_id]["status"] = "COMPLETED"
+                    self._jobs[job_id]["result"] = forecaster
+                    self._jobs[job_id]["run_id"] = run.info.run_id # Store Run ID
+                    self._jobs[job_id]["completed_at"] = datetime.now()
                 
         except Exception as e:
             with self._lock:

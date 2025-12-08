@@ -29,26 +29,34 @@ def render_inference_ui() -> None:
     registry = ModelRegistry()
     
     # Check if model is loaded
-    if "forecaster" not in st.session_state:
-        # Try to find models
-        model_files = registry.list_models()
-        if not model_files:
-            st.warning("No model files found. Please train a model first.")
-            if st.button("Go to Training"):
-                st.session_state["nav"] = "Training"
-                st.rerun()
-            return
-            
-        selected_model = st.selectbox("Select Model", model_files)
-        if st.button("Load Model"):
-            try:
-                st.session_state["forecaster"] = registry.load_model(selected_model)
-                st.success(f"Loaded {selected_model}")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error loading model: {e}")
+    # MLflow returns runs, not file paths. 
+    # We display: "RunID (Date) - Metric"
+    runs = registry.list_models() # List of dicts
+    
+    if not runs:
+        st.warning("No trained models found in MLflow. Please train a new model.")
         return
 
+    # Create display labels
+    run_options = {f"{r['start_time'].strftime('%Y-%m-%d %H:%M')} | CV:{r.get('metrics.cv_mean_score', 'N/A'):.4f} | ID:{r['run_id'][:8]}": r['run_id'] for r in runs}
+    
+    selected_label = st.selectbox("Select Model Version", options=list(run_options.keys()))
+    
+    if not selected_label:
+        return
+        
+    run_id = run_options[selected_label]
+    
+    # Load Model
+    if "forecaster" not in st.session_state or st.session_state.get("current_run_id") != run_id:
+        with st.spinner(f"Loading model from MLflow run {run_id}..."):
+            try:
+                st.session_state["forecaster"] = registry.load_model(run_id)
+                st.session_state["current_run_id"] = run_id
+            except Exception as e:
+                st.error(f"Failed to load model: {e}")
+                return
+    
     forecaster: SalaryForecaster = st.session_state["forecaster"]
     
     with st.form("inference_form"):
@@ -220,27 +228,19 @@ def render_training_ui() -> None:
             
             if results_data:
                 res_df = pd.DataFrame(results_data)
-                
-                # 1. Chart
                 if display_charts:
                     st.line_chart(res_df.set_index("Model")["Score"])
-                
-                # 2. Table
                 st.dataframe(res_df.style.format({"Score": "{:.4f}"}))
             # ---------------------------
             
             forecaster = status["result"]
-            st.session_state["forecaster"] = forecaster
+            run_id = status.get("run_id", "N/A")
             
-            # Save Logic
-            if st.button("Save Model"):
-                if custom_name and custom_name.strip():
-                    output_path = custom_name.strip()
-                else:
-                    output_path = f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
-                    
-                full_path = registry.save_model(forecaster, output_path)
-                st.success(f"Saved to {full_path}")
+            st.session_state["forecaster"] = forecaster
+            st.session_state["current_run_id"] = run_id
+            
+            st.info(f"Model logged to MLflow with Run ID: **{run_id}**")
+            st.markdown("[Open MLflow UI](http://localhost:5000) to view details.")
                 
             if st.button("Start New Training"):
                 st.session_state["training_job_id"] = None

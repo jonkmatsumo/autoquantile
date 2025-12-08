@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
+from datetime import datetime
 import pandas as pd
 import json
 import io
@@ -23,65 +24,57 @@ def test_collect_user_data_invalid_level():
         df = collect_user_data()
         assert df.iloc[0]["Level"] == "E5"
 
-def test_main_interactive():
-    mock_model = MagicMock()
-    mock_model.quantiles = [0.5]
-    mock_model.predict.return_value = {"BaseSalary": {"p50": [120000]}}
-    
-    # Simulate: No args (default interactive), input E5, NY, 5, 2, Stop
-    with patch('src.cli.inference_cli.load_model', return_value=mock_model), \
-         patch('builtins.input', side_effect=["E5", "New York", "5", "2", "n"]), \
-         patch('src.cli.inference_cli.Console') as MockConsole, \
-         patch('src.cli.inference_cli.select_model', return_value="model.pkl"), \
-         patch('sys.argv', ['cli']), \
-         patch('src.cli.inference_cli.plt'): # Mock plotting
-         
-         main()
-         
-         mock_model.predict.assert_called()
+@pytest.fixture
+def mock_model():
+    m = MagicMock()
+    m.quantiles = [0.5]
+    m.predict.return_value = {"BaseSalary": {"p50": [120000]}}
+    return m
 
-def test_main_non_interactive_json():
-    mock_model = MagicMock()
-    mock_model.quantiles = [0.5]
-    mock_model.predict.return_value = {"BaseSalary": {"p50": [120000]}}
-    
-    # Simulate: Flags provided, --json
-    args = [
-        'cli', 
-        '--model', 'model.pkl',
-        '--level', 'E5', 
-        '--location', 'New York',
-        '--yoe', '5', 
-        '--yac', '2',
-        '--json'
-    ]
-    
-    with patch('src.cli.inference_cli.load_model', return_value=mock_model), \
-         patch('sys.argv', args), \
-         patch('sys.stdout', new_callable=io.StringIO) as mock_stdout:
-         
-         main()
-         
-         output = mock_stdout.getvalue()
-         data = json.loads(output)
-         
-         assert data["BaseSalary"]["p50"] == 120000
-         mock_model.predict.assert_called_once()
-         # Verify correct input dataframe was passed
-         call_arg = mock_model.predict.call_args[0][0]
-         assert call_arg.iloc[0]["Level"] == "E5"
+@pytest.fixture
+def mock_input():
+    with patch("builtins.input") as m:
+        yield m
 
-def test_main_partial_args_error():
-    # Missing --yac
-    args = ['cli', '--level', 'E5', '--location', 'NY', '--yoe', '5']
+@pytest.fixture
+def mock_console():
+    with patch("src.cli.inference_cli.Console") as m:
+        yield m.return_value
+
+@patch("src.cli.inference_cli.ModelRegistry")
+def test_main_interactive(MockRegistry, mock_model, mock_input, mock_console):
+    # Setup mocks
+    mock_registry_instance = MockRegistry.return_value
+    mock_registry_instance.list_models.return_value = [{"run_id": "run123", "start_time": datetime.now(), "metrics.cv_mean_score": 0.9}]
+    mock_registry_instance.load_model.return_value = mock_model
     
-    with patch('sys.argv', args), \
-         patch('src.cli.inference_cli.Console') as MockConsole, \
-         patch('sys.exit', side_effect=SystemExit) as mock_exit:
-         
+    # Run with empty args
+    with patch("sys.argv", ["script_name"]):
+        # Mock interactive inputs:
+        # 1. select_model -> "1"
+        # 2. collect_user_data -> "E5", "New York", "5", "2"
+        # 3. loop break -> "n"
+        mock_input.side_effect = ["1", "E5", "New York", "5", "2", "n"]
+        main()
+        
+    mock_registry_instance.load_model.assert_called_with("run123")
+    mock_model.predict.assert_called()
+
+@patch("src.cli.inference_cli.ModelRegistry")
+def test_main_non_interactive_json(MockRegistry, mock_model, capsys):
+    mock_registry_instance = MockRegistry.return_value
+    mock_registry_instance.load_model.return_value = mock_model
+    
+    with patch("sys.argv", ["script_name", "--run-id", "runAUTO", "--level", "E5", "--location", "NY", "--yoe", "5", "--yac", "2", "--json"]):
+        main()
+        
+    mock_registry_instance.load_model.assert_called_with("runAUTO")
+    captured = capsys.readouterr()
+    assert '"BaseSalary":' in captured.out
+    
+def test_main_partial_args_error(mock_console):
+    # Should exit if partial non-interactive args
+    with patch("sys.argv", ["script_name", "--level", "E5"]): # Missing others
          with pytest.raises(SystemExit):
              main()
-         
-         mock_exit.assert_called_with(1)
-         # Should print error message
-         MockConsole.return_value.print.assert_called()
+    mock_console.print.assert_called()

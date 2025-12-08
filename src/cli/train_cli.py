@@ -18,6 +18,8 @@ from src.utils.config_loader import load_config
 import argparse
 import sys
 from typing import Optional, Any
+import mlflow
+from src.services.model_registry import SalaryForecasterWrapper
 
 def train_workflow(csv_path: str, config_path: str, output_path: str, console: Any, do_tune: bool = False, num_trials: int = 20, remove_outliers: bool = False) -> None:
     """Executes the model training workflow.
@@ -96,31 +98,34 @@ def train_workflow(csv_path: str, config_path: str, output_path: str, console: A
                 
         forecaster.train(df, callback=console_callback, remove_outliers=remove_outliers)
         
-        status_text.plain = f"Status: Saving model to {output_path}..."
-        with open(output_path, "wb") as f:
-            pickle.dump(forecaster, f)
+        
+        status_text.plain = f"Status: Logging model to MLflow (Experiment: Salary_Forecast)..."
+        
+        mlflow.set_experiment("Salary_Forecast")
+        with mlflow.start_run() as run:
+            # Log Params
+            mlflow.log_params({
+                "remove_outliers": remove_outliers,
+                "do_tune": do_tune,
+                "n_trials": num_trials if do_tune else 0,
+                "data_rows": len(df)
+            })
+            
+            # Log final metrics? We rely on console_callback implicitly, but it's hard to extract best here without returning from train.
+            # Ideally SalaryForecaster should expose metrics.
+            
+            # Log Model
+            wrapper = SalaryForecasterWrapper(forecaster)
+            mlflow.pyfunc.log_model(
+                artifact_path="model",
+                python_model=wrapper,
+                pip_requirements=["xgboost", "pandas", "scikit-learn"]
+            )
+            
+            console.print(f"[dim]Run ID: {run.info.run_id}[/dim]")
             
         status_text.plain = "Status: Completed"
     
-    console.print("\n[bold]Running sample inference...[/bold]")
-    sample_input = pd.DataFrame([{
-        "Level": "E4",
-        "Location": "New York",
-        "YearsOfExperience": 3,
-        "YearsAtCompany": 0
-    }])
-    
-    prediction = forecaster.predict(sample_input)
-    console.print("Prediction for E4 New Hire in NY (3 YOE):")
-    for target, preds in prediction.items():
-        res_str = f"  {target}: "
-        parts = []
-        for q in sorted(forecaster.quantiles):
-            key = f"p{int(q*100)}"
-            val = preds[key][0]
-            parts.append(f"P{int(q*100)}={val:,.0f}")
-        console.print(res_str + ", ".join(parts))
-
 def main():
     console = Console()
     console.print("[bold green]Salary Forecasting Training CLI[/bold green]")
@@ -128,7 +133,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train Salary Forecast Model")
     parser.add_argument("--csv", default="salaries-list.csv", help="Path to training CSV")
     parser.add_argument("--config", default="config.json", help="Path to config JSON")
-    parser.add_argument("--output", default="salary_model.pkl", help="Path to save model")
+    parser.add_argument("--output", default=None, help="Deprecated: Output path (now logs to MLflow)")
     parser.add_argument("--tune", action="store_true", help="Enable Optuna hyperparameter tuning")
     parser.add_argument("--num-trials", type=int, default=20, help="Number of tuning trials")
     parser.add_argument("--remove-outliers", action="store_true", help="Remove outliers using IQR before training")

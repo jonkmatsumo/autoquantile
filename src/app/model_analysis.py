@@ -13,48 +13,51 @@ def render_model_analysis_ui() -> None:
     
     registry = ModelRegistry()
     
-    model_files = registry.list_models()
-    if not model_files:
-        st.warning("No model files (*.pkl) found in the root directory. Please train a model first.")
+    runs = registry.list_models() # List of dicts
+    if not runs:
+        st.warning("No models found in MLflow. Please train a new model.")
         return
 
-    selected_model_file = st.selectbox("Select Model to Analyze", model_files)
+    # Create display labels
+    run_options = {f"{r['start_time'].strftime('%Y-%m-%d %H:%M')} | CV:{r.get('metrics.cv_mean_score', 'N/A'):.4f} | ID:{r['run_id'][:8]}": r['run_id'] for r in runs}
     
-    if selected_model_file:
-        try:
-            forecaster = registry.load_model(selected_model_file)
-            st.success(f"Loaded `{selected_model_file}`")
-            
-            st.subheader("Feature Importance")
-            st.info("Visualize which features drive the predictions (Gain metric).")
-            
-            analytics_service = AnalyticsService()
-            targets = analytics_service.get_available_targets(forecaster)
-            
-            if not targets:
-                 st.error("This model file does not appear to contain trained models.")
-                 return
+    selected_label = st.selectbox("Select Model Version", options=list(run_options.keys()))
+    if not selected_label:
+        return
+        
+    selected_run_id = run_options[selected_label]
+    
+    try:
+        forecaster = registry.load_model(selected_run_id)
+        st.success(f"Loaded Run: {selected_run_id}")
+        
+        st.subheader("Feature Importance")
+        st.info("Visualize which features drive the predictions (Gain metric).")
+        
+        analytics_service = AnalyticsService()
+        targets = analytics_service.get_available_targets(forecaster)
+        
+        if not targets:
+            st.error("This model file does not appear to contain trained models.")
+            return
 
-            selected_target = st.selectbox("Select Target Component", targets)
+        selected_target = st.selectbox("Select Target Component", targets)
+        
+        if selected_target:
+            quantiles = analytics_service.get_available_quantiles(forecaster, selected_target)
+            selected_q_val = st.selectbox("Select Quantile", quantiles, format_func=lambda x: f"P{int(x*100)}")
             
-            if selected_target:
-                quantiles = analytics_service.get_available_quantiles(forecaster, selected_target)
-                selected_q_val = st.selectbox("Select Quantile", quantiles, format_func=lambda x: f"P{int(x*100)}")
+            df_imp = analytics_service.get_feature_importance(forecaster, selected_target, selected_q_val)
+            if df_imp.empty:
+                st.warning(f"No feature importance scores found for {selected_target} at P{int(selected_q_val*100)}.")
+            else:
+                st.dataframe(df_imp, use_container_width=True)
                 
-                if selected_q_val is not None:
-                    df_imp = analytics_service.get_feature_importance(forecaster, selected_target, selected_q_val)
-                    
-                    if df_imp is None or df_imp.empty:
-                        st.warning("No feature importance scores found.")
-                    else:
-                        fig, ax = plt.subplots(figsize=(10, 6))
-                        sns.barplot(data=df_imp, x="Gain", y="Feature", hue="Feature", ax=ax, palette="viridis", legend=False)
-                        ax.set_title(f"Feature Importance (Gain) - {selected_target} P{int(selected_q_val*100)}")
-                        st.pyplot(fig)
-                        
-                        with st.expander("View Raw Scores"):
-                            st.dataframe(df_imp)
-                        
-        except Exception as e:
-            st.error(f"Error loading model: {e}")
-            st.code(traceback.format_exc())
+                # Plot
+                fig, ax = plt.subplots(figsize=(10, 6))
+                sns.barplot(data=df_imp.head(20), x="Gain", y="Feature", ax=ax, palette="viridis")
+                ax.set_title(f"Top 20 Features for {selected_target} (P{int(selected_q_val*100)})")
+                st.pyplot(fig)
+                
+    except Exception as e:
+        st.code(traceback.format_exc())

@@ -58,30 +58,42 @@ def collect_user_data() -> pd.DataFrame:
         "YearsAtCompany": yac
     }])
 
-def select_model(console: Console) -> str:
-    """Interactive model file selection."""
-    models = glob.glob("*.pkl")
-    if not models:
-        console.print("[bold red]No model files (*.pkl) found in current directory.[/bold red]")
-        console.print("Please run the training CLI first: python3 -m src.cli.train_cli")
+from src.services.model_registry import ModelRegistry
+
+def select_model(console: Console, registry: ModelRegistry) -> str:
+    """Interactive model selection from MLflow runs."""
+    runs = registry.list_models()
+    if not runs:
+        console.print("[bold red]No trained models found in MLflow.[/bold red]")
+        console.print("Please run the training CLI or App first.")
         sys.exit(1)
         
-    if len(models) == 1:
-        console.print(f"[bold blue]Found one model: {models[0]}[/bold blue]")
-        return models[0]
-        
-    console.print("\n[bold]Available Models:[/bold]")
-    for i, m in enumerate(models):
-        console.print(f"{i+1}. {m}")
+    # Simplify for CLI display
+    console.print("\n[bold]Available Runs:[/bold]")
+    run_map = []
+    
+    for i, r in enumerate(runs):
+        run_id = r["run_id"]
+        date_str = r['start_time'].strftime('%Y-%m-%d %H:%M')
+        score = f"{r.get('metrics.cv_mean_score', 'N/A'):.4f}"
+        console.print(f"{i+1}. {date_str} (Score: {score}) - ID: {run_id[:8]}")
+        run_map.append(run_id)
         
     while True:
         try:
-            choice = int(console.input("\nSelect a model (number): "))
-            if 1 <= choice <= len(models):
-                return models[choice-1]
+            choice = int(console.input("\nSelect a run (number): "))
+            if 1 <= choice <= len(run_map):
+                return run_map[choice-1]
             console.print("[red]Invalid selection.[/red]")
         except ValueError:
             console.print("[red]Please enter a number.[/red]")
+
+def get_ordinal_suffix(n: int) -> str:
+    if 11 <= (n % 100) <= 13:
+        suffix = 'th'
+    else:
+        suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+    return f"{n}{suffix}"
 
 def get_ordinal_suffix(n: int) -> str:
     if 11 <= (n % 100) <= 13:
@@ -96,7 +108,7 @@ def main():
     parser = argparse.ArgumentParser(description="Salary Forecasting Inference CLI")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
     
-    parser.add_argument("--model", type=str, help="Path to model file")
+    parser.add_argument("--run-id", type=str, help="MLflow Run ID")
     parser.add_argument("--level", type=str, help="Candidate Level (e.g. E5)")
     parser.add_argument("--location", type=str, help="Candidate Location")
     parser.add_argument("--yoe", type=int, help="Years of Experience")
@@ -119,18 +131,20 @@ def main():
     if not args.json:
         console.print("[bold green]Welcome to the Salary Forecasting CLI[/bold green]")
     
+    registry = ModelRegistry()
+    
     # 1. Model Selection
-    if args.model:
-        model_path = args.model
+    if args.run_id:
+        run_id = args.run_id
     else:
         # Interactive selection
-        model_path = select_model(console)
+        run_id = select_model(console, registry)
 
     if not args.json:
-        logger.info(f"Loading model from: {model_path}")
+        logger.info(f"Loading model run: {run_id}")
     
     try:
-        model = load_model(model_path)
+        model = registry.load_model(run_id)
     except Exception as e:
         if args.json:
              print(json.dumps({"error": f"Failed to load model: {e}"}))
