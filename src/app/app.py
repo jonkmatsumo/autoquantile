@@ -11,7 +11,10 @@ from typing import Optional, Dict, Any, List
 # Ensure src can be imported if running from inside src/app or root
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
-from src.model.model import SalaryForecaster
+from src.utils.compatibility import apply_backward_compatibility
+apply_backward_compatibility()
+
+from src.xgboost.model import SalaryForecaster
 from src.app.config_ui import render_config_ui
 from src.app.data_analysis import render_data_analysis_ui
 from src.app.model_analysis import render_model_analysis_ui

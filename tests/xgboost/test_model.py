@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import pandas as pd
 import numpy as np
-from src.model.model import SalaryForecaster
+from src.xgboost.model import SalaryForecaster
 
 @pytest.fixture(scope="module")
 def trained_model():
@@ -157,9 +157,9 @@ class TestConfigHyperparams(unittest.TestCase):
             }
         }
 
-    @patch("src.model.model.xgb.train")
-    @patch("src.model.model.xgb.cv")
-    @patch("src.model.model.xgb.DMatrix")
+    @patch("src.xgboost.model.xgb.train")
+    @patch("src.xgboost.model.xgb.cv")
+    @patch("src.xgboost.model.xgb.DMatrix")
     def test_custom_hyperparams_passed_to_xgb(self, mock_dmatrix, mock_cv, mock_train):
         # Mock cv results
         mock_cv.return_value = pd.DataFrame({'test-quantile-mean': [0.5, 0.4, 0.3]})
@@ -184,9 +184,9 @@ class TestConfigHyperparams(unittest.TestCase):
         # Verify merged params exist
         self.assertEqual(params_arg.get("quantile_alpha"), 0.5)
 
-    @patch("src.model.model.xgb.train")
-    @patch("src.model.model.xgb.cv")
-    @patch("src.model.model.xgb.DMatrix")
+    @patch("src.xgboost.model.xgb.train")
+    @patch("src.xgboost.model.xgb.cv")
+    @patch("src.xgboost.model.xgb.DMatrix")
     def test_custom_cv_params_passed(self, mock_dmatrix, mock_cv, mock_train):
         mock_cv.return_value = pd.DataFrame({'test-quantile-mean': [0.5]})
         
@@ -223,8 +223,8 @@ class TestConfigHyperparams(unittest.TestCase):
         with self.assertRaises(ValueError):
             SalaryForecaster._analyze_cv_results(cv_df, 'missing-metric')
 
-@patch("src.model.model.xgb")
-@patch("src.model.model.optuna")
+@patch("src.xgboost.model.xgb")
+@patch("src.xgboost.model.optuna")
 def test_tune(mock_optuna, mock_xgb):
     # Mock Config
     mock_config = {
@@ -238,7 +238,7 @@ def test_tune(mock_optuna, mock_xgb):
         "location_settings": {"max_distance_km": 50}
     }
     
-    with patch("src.model.model.get_config", return_value=mock_config):
+    with patch("src.xgboost.model.get_config", return_value=mock_config):
         forecaster = SalaryForecaster()
         
         # Mock Data
@@ -292,7 +292,7 @@ class TestOutlierDetection:
             "mappings": {"levels": {}, "location_targets": {}},
             "location_settings": {"max_distance_km": 50}
         }
-        with patch("src.model.model.get_config", return_value=mock_config):
+        with patch("src.xgboost.model.get_config", return_value=mock_config):
             return SalaryForecaster()
 
     def test_remove_outliers_iqr(self, forecaster):
@@ -322,7 +322,7 @@ class TestOutlierDetection:
         forecaster.weighter.transform.return_value = [1]
         
         # Mock xgboost training parts to just return
-        with patch("src.model.model.xgb") as mock_xgb:
+        with patch("src.xgboost.model.xgb") as mock_xgb:
              # Set up mock CV results to satisfy _analyze_cv_results
              mock_cv_df = pd.DataFrame({'test-quantile-mean': [0.5, 0.4]})
              mock_xgb.cv.return_value = mock_cv_df

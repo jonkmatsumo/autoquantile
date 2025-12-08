@@ -3,7 +3,7 @@ import optuna
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Union, Tuple, Any, Callable
-from src.model.preprocessing import LevelEncoder, LocationEncoder, SampleWeighter
+from src.xgboost.preprocessing import LevelEncoder, LocationEncoder, SampleWeighter
 from src.utils.config_loader import get_config
 from src.utils.logger import get_logger
 

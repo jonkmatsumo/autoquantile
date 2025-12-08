@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import pandas as pd
 from src.services.training_service import TrainingService
-from src.model.model import SalaryForecaster
+from src.xgboost.model import SalaryForecaster
 
 class TestTrainingService(unittest.TestCase):
     def setUp(self):

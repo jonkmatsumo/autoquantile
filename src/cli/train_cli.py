@@ -10,7 +10,7 @@ from rich.console import Console, Group
 from rich.live import Live
 from rich.table import Table
 from rich.text import Text
-from src.model.model import SalaryForecaster
+from src.xgboost.model import SalaryForecaster
 from src.utils.data_utils import load_data
 from src.utils.config_loader import load_config
 

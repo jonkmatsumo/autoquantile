@@ -12,6 +12,9 @@ from rich.table import Table
 from typing import Any, Callable, List, Optional, Union
 from src.utils.logger import setup_logging, get_logger
 
+from src.utils.compatibility import apply_backward_compatibility
+apply_backward_compatibility()
+
 logger = get_logger(__name__)
 
 def load_model(path: str) -> Any:

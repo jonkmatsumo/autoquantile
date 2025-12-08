@@ -4,7 +4,7 @@ from datetime import datetime
 import uuid
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from src.model.model import SalaryForecaster
+from src.xgboost.model import SalaryForecaster
 from src.utils.logger import get_logger
 
 class TrainingService:

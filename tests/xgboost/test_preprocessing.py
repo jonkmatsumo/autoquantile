@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import patch, MagicMock
-from src.model.preprocessing import LevelEncoder, LocationEncoder, SampleWeighter
+from src.xgboost.preprocessing import LevelEncoder, LocationEncoder, SampleWeighter
 
 # --- LevelEncoder Tests ---
 
@@ -12,7 +12,7 @@ def test_level_encoder_transform():
             "levels": {"E3": 0, "E4": 1, "E5": 2}
         }
     }
-    with patch('src.model.preprocessing.get_config', return_value=mock_config):
+    with patch('src.xgboost.preprocessing.get_config', return_value=mock_config):
         encoder = LevelEncoder()
         
         # Test Series input
@@ -28,7 +28,7 @@ def test_level_encoder_dataframe_input():
             "levels": {"E3": 0}
         }
     }
-    with patch('src.model.preprocessing.get_config', return_value=mock_config):
+    with patch('src.xgboost.preprocessing.get_config', return_value=mock_config):
         encoder = LevelEncoder()
         df = pd.DataFrame({"Level": ["E3"]})
         result = encoder.transform(df)
@@ -38,7 +38,7 @@ def test_level_encoder_dataframe_input():
 
 def test_location_encoder_transform():
     # Mock GeoMapper
-    with patch('src.model.preprocessing.GeoMapper') as MockGeoMapper:
+    with patch('src.xgboost.preprocessing.GeoMapper') as MockGeoMapper:
         mock_mapper = MockGeoMapper.return_value
         # Setup mock behavior: NY -> 1, SF -> 2, Unknown -> 4
         mock_mapper.get_zone.side_effect = lambda x: 1 if x == "NY" else (2 if x == "SF" else 4)
@@ -79,7 +79,7 @@ def test_level_encoder_edge_cases():
             "levels": {"E3": 0}
         }
     }
-    with patch('src.model.preprocessing.get_config', return_value=mock_config):
+    with patch('src.xgboost.preprocessing.get_config', return_value=mock_config):
         encoder = LevelEncoder()
         
         # Test with None, NaN, Empty string - should map to -1 (unknown)
@@ -90,7 +90,7 @@ def test_level_encoder_edge_cases():
         np.testing.assert_array_equal(result, expected)
 
 def test_location_encoder_edge_cases():
-    with patch('src.model.preprocessing.GeoMapper') as MockGeoMapper:
+    with patch('src.xgboost.preprocessing.GeoMapper') as MockGeoMapper:
         mock_mapper = MockGeoMapper.return_value
         # If input is not a string (e.g. NaN), get_zone might not even be called if we handle it in transform
         # or we rely on get_zone to handle it. 

@@ -1,7 +1,7 @@
 import mlflow
 from mlflow.tracking import MlflowClient
 from typing import List, Any
-from src.model.model import SalaryForecaster
+from src.xgboost.model import SalaryForecaster
 from mlflow.pyfunc import PythonModel
 from src.utils.logger import get_logger
 
