@@ -17,14 +17,17 @@ class TestModelRegistry(unittest.TestCase):
             "run_id": ["run1", "run2"],
             "start_time": [datetime(2023,1,1), datetime(2023,1,2)],
             "status": ["FINISHED", "FINISHED"],
-            "metrics.cv_mean_score": [0.95, 0.96]
+            "status": ["FINISHED", "FINISHED"],
+            "metrics.cv_mean_score": [0.95, 0.96],
+            "tags.dataset_name": ["d1", "d2"]
         })
         mock_search.return_value = mock_df
         
         models = self.registry.list_models()
         self.assertEqual(len(models), 2)
         self.assertEqual(models[0]["run_id"], "run1")
-
+        self.assertEqual(models[0]["tags.dataset_name"], "d1")
+    
     @patch("src.services.model_registry.mlflow.search_runs")
     def test_list_models_missing_col(self, mock_search):
         # Mock dataframe WITHOUT metric column
@@ -40,6 +43,7 @@ class TestModelRegistry(unittest.TestCase):
         self.assertEqual(models[0]["run_id"], "run1")
         # Ensure it didn't crash and metric key is absent
         self.assertNotIn("metrics.cv_mean_score", models[0])
+        self.assertNotIn("tags.dataset_name", models[0])
 
     @patch("src.services.model_registry.mlflow.pyfunc.load_model")
     def test_load_model(self, mock_load):

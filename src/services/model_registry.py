@@ -37,14 +37,18 @@ class ModelRegistry:
             return []
         
         # Prepare a lightweight format for UI
-
-        cols = ["run_id", "start_time"]
-        if "metrics.cv_mean_score" in runs.columns:
-            cols.append("metrics.cv_mean_score")
-        elif "metrics.cv_score" in runs.columns:
-             pass 
-        # Extract available columns
-        return runs[cols].to_dict('records')
+        # We want run_id, start_time, and any tags or metrics of interest
+        cols_to_keep = ["run_id", "start_time"]
+        
+        # Add any columns that look like tags or metrics
+        for c in runs.columns:
+            if c.startswith("tags.") or c.startswith("metrics."):
+                cols_to_keep.append(c)
+                
+        # Filter to only existing columns
+        cols_to_keep = [c for c in cols_to_keep if c in runs.columns]
+        
+        return runs[cols_to_keep].to_dict('records')
 
     def load_model(self, run_id: str) -> SalaryForecaster:
         """Loads the 'model' artifact from the specified run."""

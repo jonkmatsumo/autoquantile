@@ -52,14 +52,14 @@ def render_inference_ui() -> None:
     def get_run_label(r):
         ts = r['start_time'].strftime('%Y-%m-%d %H:%M')
         # Check tags first, fallback to hardcoded or empty
-        tags = r.get("tags", {})
-        m_type = tags.get("model_type", "XGBoost") # Default to XGBoost
-        d_name = tags.get("dataset_name", "Unknown Data")
+        # Note: ModelRegistry returns flat dict with keys "tags.xxx"
+        m_type = r.get("tags.model_type", "XGBoost") 
+        d_name = r.get("tags.dataset_name", "Unknown Data")
         
         # Check for additional tag (or legacy output_filename)
-        add_tag = tags.get("additional_tag")
+        add_tag = r.get("tags.additional_tag")
         if not add_tag or add_tag == "N/A":
-             add_tag = tags.get("output_filename")
+             add_tag = r.get("tags.output_filename")
              
         cv_score = fmt_score(r.get('metrics.cv_mean_score', 'N/A'))
         r_id = r['run_id'][:8]

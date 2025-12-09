@@ -20,9 +20,12 @@ def render_training_ui() -> None:
     df = None
     if "training_data" in st.session_state:
         df = st.session_state["training_data"]
-        st.success(f"Using loaded data from Data Analysis ({len(df)} rows).")
+        dataset_name = st.session_state.get("training_dataset_name", "Unknown")
+        st.success(f"Using loaded data: **{dataset_name}** ({len(df)} rows).")
         if st.button("Use Different File"):
             del st.session_state["training_data"]
+            if "training_dataset_name" in st.session_state:
+                del st.session_state["training_dataset_name"]
             st.rerun()
     else:
         uploaded_file = st.file_uploader("Upload Training CSV", type=["csv"])

@@ -368,10 +368,15 @@ def render_config_ui(config: Dict[str, Any]) -> Dict[str, Any]:
         else:
             uploaded_file = st.file_uploader("Upload CSV Sample", type=["csv"], key="config_gen_uploader")
             if uploaded_file:
-                is_valid, err, df = validate_csv(uploaded_file)
+                is_valid, err, df_preview = validate_csv(uploaded_file)
                 if is_valid:
-                    df_to_analyze = df
-                    st.success(f"CSV Validated ({len(df)} rows).")
+                    # Load full data for training state
+                    full_df = load_data_cached(uploaded_file)
+                    st.session_state["training_data"] = full_df
+                    st.session_state["training_dataset_name"] = uploaded_file.name
+                    
+                    df_to_analyze = full_df
+                    st.success(f"Dataset '{uploaded_file.name}' loaded for training & analysis ({len(full_df)} rows).")
                 else:
                     st.error(f"Invalid CSV: {err}")
 

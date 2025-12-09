@@ -181,6 +181,7 @@ def test_render_config_ui_generator_upload_flow(sample_config):
     with patch("src.app.config_ui.st") as mock_st, \
          patch("src.app.config_ui.ConfigGenerator") as MockGenerator, \
          patch("src.app.config_ui.validate_csv") as mock_validate, \
+         patch("src.app.config_ui.load_data_cached") as mock_load_data, \
          patch("src.app.config_ui.render_ranked_mappings_section"), \
          patch("src.app.config_ui.render_location_targets_editor"), \
          patch("src.app.config_ui.render_location_settings_editor"), \
@@ -193,11 +194,13 @@ def test_render_config_ui_generator_upload_flow(sample_config):
         mock_st.radio.return_value = "Upload New CSV"
         # Mock uploader returning a truthy value (MagicMock)
         mock_file = MagicMock()
+        mock_file.name = "test.csv"
         mock_st.file_uploader.return_value = mock_file
         
         # Validation Success
         upload_df = pd.DataFrame({"B": [2]})
         mock_validate.return_value = (True, None, upload_df)
+        mock_load_data.return_value = upload_df
         
         # Inputs
         mock_st.checkbox.return_value = False # No AI
