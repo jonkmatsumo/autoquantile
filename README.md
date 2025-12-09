@@ -153,45 +153,6 @@ The agent considers:
 
 The system automatically detects available providers based on installed packages and API keys.
 
-### Configuration Output
-
-The workflow generates a structured configuration dictionary:
-
-```json
-{
-    "mappings": {
-        "levels": {"E3": 0, "E4": 1, "E5": 2},
-        "location_targets": {"New York, NY": 1, "San Francisco, CA": 1}
-    },
-    "location_settings": {"max_distance_km": 50.0},
-    "model": {
-        "targets": ["BaseSalary"],
-        "quantiles": [0.1, 0.25, 0.5, 0.75, 0.9],
-        "sample_weight_k": 1.0,
-        "features": [
-            {"name": "Level_Enc", "monotone_constraint": 1},
-            {"name": "Location_Enc", "monotone_constraint": 0}
-        ],
-        "hyperparameters": {
-            "training": {
-                "max_depth": 6,
-                "eta": 0.1,
-                "subsample": 0.8
-            },
-            "cv": {
-                "num_boost_round": 200,
-                "nfold": 5
-            }
-        }
-    },
-    "_metadata": {
-        "classification_reasoning": "Agent reasoning for column classification",
-        "encoding_summary": "Summary of encoding decisions",
-        "configuration_reasoning": "Rationale for model configuration"
-    }
-}
-```
-
 ### Manual Configuration
 
 You can also provide a configuration file directly (`config.json`) when using the CLI, or edit configurations manually in the web interface after generation.
