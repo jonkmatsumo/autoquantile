@@ -1,3 +1,14 @@
+"""
+Legacy LLM Service for configuration generation.
+
+DEPRECATED: This module is deprecated in favor of the new agentic workflow.
+Use WorkflowService from src.services.workflow_service for AI-powered
+configuration generation through the multi-step wizard.
+
+This module is kept for backward compatibility only.
+"""
+
+import warnings
 import json
 import pandas as pd
 from typing import Dict, Any, Optional
@@ -6,8 +17,23 @@ from src.utils.prompt_loader import load_prompt
 from src.utils.logger import get_logger
 from src.model.config_schema_model import Config
 
+
 class LLMService:
+    """
+    Legacy LLM service for single-prompt configuration generation.
+    
+    DEPRECATED: Use WorkflowService for the new multi-step agentic workflow.
+    This class is kept for backward compatibility only.
+    """
+    
     def __init__(self, provider: str = "openai"):
+        warnings.warn(
+            "LLMService is deprecated. Use WorkflowService from "
+            "src.services.workflow_service for AI-powered configuration generation.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
         self.logger = get_logger(__name__)
         try:
             self.client = get_llm_client(provider)
@@ -17,18 +43,20 @@ class LLMService:
 
     def generate_config(self, df: pd.DataFrame, preset: str = "none") -> Dict[str, Any]:
         """
-        Generates configuration from dataframe using LLM, optionally applying a preset.
+        Generates configuration from dataframe using LLM.
+        
+        DEPRECATED: Use WorkflowService.start_workflow() for the new multi-step
+        agentic workflow with user confirmation at each phase.
         
         Args:
-            df (pd.DataFrame): Input dataframe.
-            preset (str): Preset name (e.g. 'salary', 'none'). Defaults to 'none'.
+            df: Input dataframe.
+            preset: Preset name (e.g. 'salary', 'none').
             
         Returns:
-            Dict[str, Any]: Validated configuration dictionary.
+            Validated configuration dictionary.
         """
         if not self.client:
             raise RuntimeError("LLM Client not initialized. Check API keys.")
-
 
         sample = df.head(50).to_csv(index=False)
         dtypes = df.dtypes.to_string()
@@ -36,7 +64,6 @@ class LLMService:
         user_prompt_template = load_prompt("config_generation_user")
         system_prompt = load_prompt("config_generation_system")
         
-
         preset_content = ""
         if preset and preset.lower() != "none":
             try:
@@ -44,7 +71,6 @@ class LLMService:
             except Exception as e:
                 self.logger.warning(f"Failed to load preset '{preset}': {e}")
         
-
         if preset_content:
             system_prompt += f"\n\n{preset_content}"
         
@@ -54,11 +80,9 @@ class LLMService:
         response_text = self.client.generate(prompt, system_prompt=system_prompt)
         
         try:
-
             cleaned_text = response_text.replace("```json", "").replace("```", "").strip()
             config_dict = json.loads(cleaned_text)
             
-
             validated_config = Config.model_validate(config_dict)
             self.logger.info("Successfully generated and validated config from LLM.")
             return validated_config.model_dump()
