@@ -350,5 +350,234 @@ def test_render_config_ui_uses_override(sample_config):
         assert args[0] == override_config
 
 
+# =============================================================================
+# Workflow Wizard Tests
+# =============================================================================
+
+def test_render_workflow_wizard_initialization():
+    """Test render_workflow_wizard initialization."""
+    from src.app.config_ui import render_workflow_wizard
+    
+    df = pd.DataFrame({"Salary": [100000], "Level": ["L3"]})
+    
+    with patch("src.app.config_ui.st") as mock_st:
+        mock_st.session_state = {}
+        mock_st.button.return_value = False
+        
+        result = render_workflow_wizard(df)
+        
+        assert result is None
+        assert mock_st.session_state.get("workflow_phase") == "not_started"
+
+@patch("src.app.config_ui.WorkflowService")
+def test_workflow_wizard_start_button(mock_service_class):
+    """Test workflow start button."""
+    from src.app.config_ui import render_workflow_wizard
+    
+    df = pd.DataFrame({"Salary": [100000]})
+    mock_service = MagicMock()
+    mock_service.start_workflow.return_value = {
+        "phase": "classification",
+        "status": "success",
+        "data": {"targets": ["Salary"], "features": [], "ignore": []}
+    }
+    mock_service_class.return_value = mock_service
+    
+    with patch("src.app.config_ui.st") as mock_st:
+        mock_st.session_state = {}
+        mock_st.button.return_value = True
+        mock_st.spinner.return_value.__enter__ = MagicMock()
+        mock_st.spinner.return_value.__exit__ = MagicMock()
+        mock_st.rerun = MagicMock()
+        
+        result = render_workflow_wizard(df)
+        
+        mock_service.start_workflow.assert_called_once()
+        assert mock_st.session_state["workflow_phase"] == "classification"
+
+@patch("src.app.config_ui.WorkflowService")
+def test_workflow_wizard_phase_indicator(mock_service_class):
+    """Test phase indicator display."""
+    from src.app.config_ui import render_workflow_wizard
+    
+    df = pd.DataFrame({"A": [1]})
+    mock_service = MagicMock()
+    mock_service_class.return_value = mock_service
+    
+    with patch("src.app.config_ui.st") as mock_st:
+        mock_st.session_state = {"workflow_phase": "encoding"}
+        mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
+        mock_st.button.return_value = False
+        
+        render_workflow_wizard(df, provider="openai")
+        
+        # Should display phase indicator
+        mock_st.columns.assert_called()
+
+@patch("src.app.config_ui.WorkflowService")
+def test_render_classification_phase(mock_service_class):
+    """Test _render_classification_phase."""
+    from src.app.config_ui import _render_classification_phase
+    
+    mock_service = MagicMock()
+    result = {
+        "phase": "classification",
+        "status": "success",
+        "data": {
+            "targets": ["Salary"],
+            "features": ["Level"],
+            "ignore": ["ID"],
+            "reasoning": "Test reasoning"
+        },
+        "confirmed": False
+    }
+    
+    df = pd.DataFrame({"Salary": [100], "Level": ["L3"], "ID": [1]})
+    
+    with patch("src.app.config_ui.st") as mock_st:
+        mock_st.subheader = MagicMock()
+        mock_st.expander.return_value.__enter__ = MagicMock()
+        mock_st.expander.return_value.__exit__ = MagicMock()
+        mock_st.data_editor.return_value = pd.DataFrame({
+            "Column": ["Salary", "Level", "ID"],
+            "Role": ["Target", "Feature", "Ignore"],
+            "Dtype": ["int64", "object", "int64"]
+        })
+        mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
+        mock_st.button.return_value = False
+        mock_st.rerun = MagicMock()
+        
+        _render_classification_phase(mock_service, result, df)
+        
+        mock_st.subheader.assert_called_with("Step 1: Column Classification")
+
+@patch("src.app.config_ui.WorkflowService")
+def test_render_encoding_phase(mock_service_class):
+    """Test _render_encoding_phase."""
+    from src.app.config_ui import _render_encoding_phase
+    
+    mock_service = MagicMock()
+    result = {
+        "phase": "encoding",
+        "status": "success",
+        "data": {
+            "encodings": {
+                "Level": {"type": "ordinal", "mapping": {"L1": 0, "L2": 1}}
+            },
+            "summary": "Test summary"
+        },
+        "confirmed": False
+    }
+    
+    with patch("src.app.config_ui.st") as mock_st:
+        mock_st.subheader = MagicMock()
+        mock_st.expander.return_value.__enter__ = MagicMock()
+        mock_st.expander.return_value.__exit__ = MagicMock()
+        mock_st.data_editor.return_value = pd.DataFrame({
+            "Column": ["Level"],
+            "Encoding": ["ordinal"],
+            "Mapping": ['{"L1": 0, "L2": 1}'],
+            "Notes": [""]
+        })
+        mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
+        mock_st.button.return_value = False
+        mock_st.rerun = MagicMock()
+        
+        _render_encoding_phase(mock_service, result)
+        
+        mock_st.subheader.assert_called_with("Step 2: Feature Encoding")
+
+@patch("src.app.config_ui.WorkflowService")
+def test_render_configuration_phase(mock_service_class):
+    """Test _render_configuration_phase."""
+    from src.app.config_ui import _render_configuration_phase
+    
+    mock_service = MagicMock()
+    mock_service.get_final_config.return_value = {
+        "model": {"targets": ["Salary"], "features": []}
+    }
+    
+    result = {
+        "phase": "configuration",
+        "status": "success",
+        "data": {
+            "features": [{"name": "Level", "monotone_constraint": 1}],
+            "quantiles": [0.1, 0.5, 0.9],
+            "hyperparameters": {"training": {}, "cv": {}},
+            "reasoning": "Test"
+        }
+    }
+    
+    with patch("src.app.config_ui.st") as mock_st:
+        mock_st.subheader = MagicMock()
+        mock_st.expander.return_value.__enter__ = MagicMock()
+        mock_st.expander.return_value.__exit__ = MagicMock()
+        mock_st.data_editor.side_effect = [
+            pd.DataFrame({"Feature": ["Level"], "Constraint": [1], "Reasoning": [""]}),
+            pd.DataFrame({"Quantile": [0.1, 0.5, 0.9]})
+        ]
+        mock_st.columns.return_value = [MagicMock(), MagicMock()]
+        mock_st.number_input.side_effect = [6, 0.1, 0.8, 0.8, 200, 5, 20]
+        mock_st.button.return_value = False
+        mock_st.rerun = MagicMock()
+        
+        _render_configuration_phase(mock_service, result)
+        
+        mock_st.subheader.assert_called_with("Step 3: Model Configuration")
+
+@patch("src.app.config_ui.WorkflowService")
+def test_render_complete_phase(mock_service_class):
+    """Test _render_complete_phase."""
+    from src.app.config_ui import _render_complete_phase
+    
+    result = {
+        "phase": "complete",
+        "status": "complete",
+        "final_config": {
+            "model": {"targets": ["Salary"]},
+            "_metadata": {
+                "classification_reasoning": "Test",
+                "encoding_summary": "Test",
+                "configuration_reasoning": "Test"
+            }
+        }
+    }
+    
+    with patch("src.app.config_ui.st") as mock_st:
+        mock_st.subheader = MagicMock()
+        mock_st.success = MagicMock()
+        mock_st.expander.return_value.__enter__ = MagicMock()
+        mock_st.expander.return_value.__exit__ = MagicMock()
+        mock_st.json = MagicMock()
+        mock_st.columns.return_value = [MagicMock(), MagicMock()]
+        mock_st.button.return_value = False
+        mock_st.rerun = MagicMock()
+        mock_st.session_state = {}
+        
+        config = _render_complete_phase(result)
+        
+        assert config is not None
+        assert config["model"]["targets"] == ["Salary"]
+
+def test_reset_workflow_state():
+    """Test _reset_workflow_state clears all state."""
+    from src.app.config_ui import _reset_workflow_state
+    
+    with patch("src.app.config_ui.st") as mock_st:
+        mock_st.session_state = {
+            "workflow_service": MagicMock(),
+            "workflow_phase": "classification",
+            "workflow_result": {},
+            "encoding_mapping_Level": {"L1": 0}
+        }
+        
+        _reset_workflow_state()
+        
+        assert "workflow_service" not in mock_st.session_state
+        assert "workflow_phase" not in mock_st.session_state
+        assert "workflow_result" not in mock_st.session_state
+        assert "encoding_mapping_Level" not in mock_st.session_state
+
+
 
 
