@@ -15,9 +15,6 @@ from src.utils.compatibility import apply_backward_compatibility
 apply_backward_compatibility()
 
 from src.xgboost.model import SalaryForecaster
-from src.app.config_ui import render_config_ui
-from src.app.data_analysis import render_data_analysis_ui
-from src.app.model_analysis import render_model_analysis_ui
 from src.app.train_ui import render_training_ui
 from src.utils.config_loader import get_config
 from src.app.caching import load_data_cached as load_data
@@ -26,6 +23,76 @@ from src.utils.logger import setup_logging
 
 from src.services.model_registry import ModelRegistry
 
+
+def render_model_information(forecaster: Any, run_id: str, runs: List[Dict[str, Any]]) -> None:
+    """
+    Display model metadata and feature information.
+    
+    Args:
+        forecaster: The loaded forecaster model
+        run_id: The MLflow run ID
+        runs: List of all runs from registry
+    """
+    st.markdown("---")
+    st.subheader("Model Information")
+    
+    # Find the current run's metadata
+    current_run = None
+    for r in runs:
+        if r['run_id'] == run_id:
+            current_run = r
+            break
+    
+    # Model Metadata
+    with st.expander("Model Metadata", expanded=True):
+        if current_run:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(f"**Run ID:** `{run_id[:8]}`")
+                st.markdown(f"**Training Date:** {current_run['start_time'].strftime('%Y-%m-%d %H:%M')}")
+                st.markdown(f"**Model Type:** {current_run.get('tags.model_type', 'XGBoost')}")
+            with col2:
+                cv_score = current_run.get('metrics.cv_mean_score', 'N/A')
+                if cv_score != 'N/A':
+                    try:
+                        cv_score = f"{float(cv_score):.4f}"
+                    except (ValueError, TypeError):
+                        pass
+                st.markdown(f"**CV Score:** {cv_score}")
+                st.markdown(f"**Dataset:** {current_run.get('tags.dataset_name', 'Unknown Data')}")
+                
+                add_tag = current_run.get("tags.additional_tag")
+                if not add_tag or add_tag == "N/A":
+                    add_tag = current_run.get("tags.output_filename")
+                if add_tag and add_tag != "N/A":
+                    st.markdown(f"**Tag:** {add_tag}")
+        else:
+            st.info("Metadata not available")
+    
+    # Feature Information
+    with st.expander("Feature Information", expanded=False):
+        # Ranked Features
+        if forecaster.ranked_encoders:
+            st.markdown("**Ranked Features:**")
+            for col_name, encoder in forecaster.ranked_encoders.items():
+                levels = list(encoder.mapping.keys())
+                st.markdown(f"- **{col_name}**: {len(levels)} levels - {', '.join(levels[:5])}{'...' if len(levels) > 5 else ''}")
+        
+        # Proximity Features
+        if forecaster.proximity_encoders:
+            st.markdown("**Proximity Features:**")
+            for col_name, encoder in forecaster.proximity_encoders.items():
+                st.markdown(f"- **{col_name}**: Proximity-based encoding")
+        
+        # Other Numerical Features
+        handled = list(forecaster.ranked_encoders.keys()) + list(forecaster.proximity_encoders.keys())
+        remaining = [f for f in forecaster.feature_names if f not in handled and f not in [f"{h}_Enc" for h in handled]]
+        if remaining:
+            st.markdown("**Numerical Features:**")
+            st.markdown(f"- {', '.join(remaining[:10])}{'...' if len(remaining) > 10 else ''}")
+        
+        # Total feature count
+        st.markdown(f"**Total Features:** {len(forecaster.feature_names)}")
 
 
 def render_inference_ui() -> None:
@@ -92,8 +159,13 @@ def render_inference_ui() -> None:
     
     forecaster = st.session_state["forecaster"]
     
+    # Display model information before the input form
+    render_model_information(forecaster, run_id, runs)
+    
+    st.markdown("---")
+    
     with st.form("inference_form"):
-        st.subheader("Candidate Details")
+        st.subheader("Input Features")
         c1, c2 = st.columns(2)
         
         input_data = {}
@@ -121,49 +193,50 @@ def render_inference_ui() -> None:
                 val = st.number_input(feat, 0, 100, 5, key=f"input_{feat}")
                 input_data[feat] = val
             
-        if st.form_submit_button("Predict"):
-            input_df = pd.DataFrame([input_data])
+        submitted = st.form_submit_button("Predict")
+    
+    # Handle prediction after form submission
+    if submitted:
+        input_df = pd.DataFrame([input_data])
+        
+        with st.spinner("Predicting..."):
+            results = forecaster.predict(input_df)
             
-            with st.spinner("Predicting..."):
-                results = forecaster.predict(input_df)
-                
-            st.subheader("Prediction Results")
+        st.subheader("Prediction Results")
+        
+        # Show zone info if Location available
+        if "Location" in forecaster.proximity_encoders:
+             encoder = forecaster.proximity_encoders["Location"]
+             loc_val = input_data.get("Location")
+             if loc_val:
+                 st.markdown(f"**Target Location Zone:** {encoder.mapper.get_zone(loc_val)}")
+        
+        # Prepare data for display
+        res_data = []
+        for target, preds in results.items():
+            row = {"Component": target}
+            for q_key, val in preds.items():
+                row[q_key] = val[0]
+            res_data.append(row)
             
-            # Show zone info if Location available
-            if "Location" in forecaster.proximity_encoders:
-                 encoder = forecaster.proximity_encoders["Location"]
-                 loc_val = input_data.get("Location")
-                 if loc_val:
-                     st.markdown(f"**Target Location Zone:** {encoder.mapper.get_zone(loc_val)}")
+        res_df = pd.DataFrame(res_data)
+        
+        # Visualization (Interactive Line Chart)
+        # X-axis = Percentiles (p10, p25...), Lines = Components
+        chart_df = res_df.set_index("Component").T
+        
+        # Sort index (percentiles) numerically
+        try:
+            # Extract integer part for sorting
+            sorted_index = sorted(chart_df.index, key=lambda x: int(x.replace("p", "")))
+            chart_df = chart_df.reindex(sorted_index)
+        except ValueError:
+            # Fallback if index format is unexpected
+            pass
             
-            # Prepare data for display
-            res_data = []
-            for target, preds in results.items():
-                row = {"Component": target}
-                for q_key, val in preds.items():
-                    row[q_key] = val[0]
-                res_data.append(row)
-                
-            res_df = pd.DataFrame(res_data)
-            
-            # Visualization (Interactive Line Chart)
-            # X-axis = Percentiles (p10, p25...), Lines = Components
-            chart_df = res_df.set_index("Component").T
-            
-            # Sort index (percentiles) numerically
-
-            try:
-                # Extract integer part for sorting
-                sorted_index = sorted(chart_df.index, key=lambda x: int(x.replace("p", "")))
-                chart_df = chart_df.reindex(sorted_index)
-            except ValueError:
-                # Fallback if index format is unexpected
-                pass
-                
-            st.line_chart(chart_df)
-            
-
-            st.dataframe(res_df.style.format({c: "${:,.0f}" for c in res_df.columns if c != "Component"}))
+        st.line_chart(chart_df)
+        
+        st.dataframe(res_df.style.format({c: "${:,.0f}" for c in res_df.columns if c != "Component"}))
 
 
 
@@ -179,9 +252,9 @@ def main() -> None:
     
 
     if "nav" not in st.session_state:
-        st.session_state["nav"] = "Inference"
+        st.session_state["nav"] = "Training"
         
-    options = ["Inference", "Training", "Data Analysis", "Model Analysis", "Configuration"]
+    options = ["Training", "Inference"]
     default_index = 0
     if st.session_state.get("nav") in options:
         default_index = options.index(st.session_state["nav"])
@@ -191,17 +264,10 @@ def main() -> None:
 
     st.session_state["nav"] = nav
     
-    if nav == "Inference":
-        render_inference_ui()
-    elif nav == "Training":
+    if nav == "Training":
         render_training_ui()
-    elif nav == "Data Analysis":
-        render_data_analysis_ui()
-    elif nav == "Model Analysis":
-        render_model_analysis_ui()
-    elif nav == "Configuration":
-        new_config = render_config_ui(config)
-        st.session_state["config_override"] = new_config
+    elif nav == "Inference":
+        render_inference_ui()
 
 if __name__ == "__main__":
     setup_logging()

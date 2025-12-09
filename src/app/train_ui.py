@@ -4,6 +4,8 @@ import time
 from src.app.caching import load_data_cached as load_data
 from src.services.training_service import TrainingService
 from src.services.model_registry import ModelRegistry
+from src.app.config_ui import render_workflow_wizard, _reset_workflow_state
+from src.services.workflow_service import get_workflow_providers
 
 
 @st.cache_resource
@@ -13,8 +15,6 @@ def get_training_service() -> TrainingService:
 def render_training_ui() -> None:
     """Renders the model training interface."""
     st.header("Model Training")
-    
-    st.info("Configure settings in 'Configuration' page before training.")
     
 
     df = None
@@ -36,10 +36,55 @@ def render_training_ui() -> None:
                 st.session_state["training_dataset_name"] = uploaded_file.name
 
                 st.success(f"Loaded {len(df)} rows.")
-                st.info("💡 **Tip**: If this is a new dataset, go to the **Configuration** page to generate an optimal config.")
             except Exception as e:
                 st.error(f"Error loading file: {e}")
+    
+    if df is None:
+        st.info("Please upload a CSV file to begin.")
+        return
+    
+    # AI-Powered Configuration Wizard (Required before training)
+    st.markdown("---")
+    wizard_completed = st.session_state.get("workflow_phase") == "complete"
+    
+    if not wizard_completed:
+        with st.expander("AI-Powered Configuration Wizard", expanded=True):
+            st.write("**Required:** Complete the configuration wizard before you can start training.")
+            st.info("Generate optimal configuration using an intelligent multi-step workflow.")
+            
+            # Provider selection
+            available_providers = get_workflow_providers()
+            if not available_providers:
+                available_providers = ["openai", "gemini"]
+            
+            provider = st.selectbox(
+                "LLM Provider",
+                available_providers,
+                index=0,
+                key="wizard_provider_training"
+            )
+            
+            result = render_workflow_wizard(df, provider)
+            
+            if result:
+                st.session_state["config_override"] = result
+                st.success("✅ Configuration generated and applied! You can now proceed with training.")
+                st.rerun()
+    else:
+        st.success("✅ Configuration wizard completed. You can now configure training options below.")
+        if st.button("Re-run Configuration Wizard"):
+            # Reset workflow state to allow re-running
+            _reset_workflow_state()
+            st.rerun()
+    
+    # Training controls - only show if wizard is completed
+    if not wizard_completed:
+        st.info("⏳ Please complete the AI-Powered Configuration Wizard above to enable training options.")
+        return
                 
+    st.markdown("---")
+    st.subheader("Training Configuration")
+    
     do_tune = st.checkbox("Run Hyperparameter Tuning", value=False)
     num_trials = 20
     if do_tune:
@@ -64,7 +109,7 @@ def render_training_ui() -> None:
 
 
     if job_id is None:
-        if st.button("Start Training (Async)"):
+        if st.button("Start Training (Async)", type="primary"):
             if df is None:
                 st.error("No data loaded.")
                 return
