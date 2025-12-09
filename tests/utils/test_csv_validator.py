@@ -32,3 +32,36 @@ def test_parsing_error():
     is_valid, err, df = validate_csv(f)
     assert not is_valid
     assert "Failed to parse CSV" in err
+
+
+def test_csv_with_missing_values():
+    """Test CSV with missing values (should still be valid)."""
+    data = "Col1,Col2\n1,2\n,4\n3,"
+    f = io.BytesIO(data.encode('utf-8'))
+    is_valid, err, df = validate_csv(f)
+    assert is_valid
+    assert err is None
+    assert len(df) == 3
+
+
+def test_csv_single_row():
+    """Test CSV with only header row."""
+    data = "Col1,Col2"
+    f = io.BytesIO(data.encode('utf-8'))
+    is_valid, err, df = validate_csv(f)
+    # CSV validator may reject empty dataframes - check actual behavior
+    # If invalid, should have error message
+    if not is_valid:
+        assert err is not None
+    else:
+        assert len(df) == 0
+
+
+def test_csv_unicode_characters():
+    """Test CSV with unicode characters."""
+    data = "Name,Salary\nJosé,100000\nMüller,200000"
+    f = io.BytesIO(data.encode('utf-8'))
+    is_valid, err, df = validate_csv(f)
+    assert is_valid
+    assert err is None
+    assert len(df) == 2

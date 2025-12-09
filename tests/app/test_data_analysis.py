@@ -1,3 +1,10 @@
+"""
+Tests for the standalone data_analysis module.
+
+Note: The data_analysis functionality has been integrated into the Training tab
+as a collapsible "Data Analysis" section. These tests verify the standalone module
+still works correctly for backward compatibility.
+"""
 import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd

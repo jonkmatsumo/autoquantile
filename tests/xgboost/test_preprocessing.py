@@ -122,3 +122,161 @@ def test_sample_weighter_k_zero():
     weights = weighter.transform(dates)
     
     np.testing.assert_array_equal(weights, np.array([1.0, 1.0]))
+
+
+def test_ranked_encoder_with_config_key():
+    """Test RankedCategoryEncoder with config_key parameter."""
+    with patch("src.xgboost.preprocessing.get_config") as mock_get_config:
+        mock_config = {
+            "mappings": {
+                "levels": {"E3": 0, "E4": 1, "E5": 2}
+            }
+        }
+        mock_get_config.return_value = mock_config
+        
+        encoder = RankedCategoryEncoder(config_key="levels")
+        
+        # Verify mapping was loaded from config
+        assert encoder.mapping == {"E3": 0, "E4": 1, "E5": 2}
+        
+        # Test transform works
+        X = pd.Series(["E3", "E4", "E5"])
+        result = encoder.transform(X)
+        expected = np.array([0, 1, 2])
+        np.testing.assert_array_equal(result, expected)
+
+
+def test_ranked_encoder_config_key_missing():
+    """Test RankedCategoryEncoder with missing config key."""
+    with patch("src.xgboost.preprocessing.get_config") as mock_get_config:
+        mock_config = {"mappings": {}}
+        mock_get_config.return_value = mock_config
+        
+        encoder = RankedCategoryEncoder(config_key="missing_key")
+        
+        # Should have empty mapping
+        assert encoder.mapping == {}
+        
+        # Transform should return -1 for all values
+        X = pd.Series(["E3", "E4"])
+        result = encoder.transform(X)
+        expected = np.array([-1, -1])
+        np.testing.assert_array_equal(result, expected)
+
+
+def test_ranked_encoder_empty_mapping():
+    """Test RankedCategoryEncoder with empty mapping."""
+    encoder = RankedCategoryEncoder(mapping={})
+    
+    X = pd.Series(["E3", "E4"])
+    result = encoder.transform(X)
+    
+    # All should map to -1 (unknown)
+    expected = np.array([-1, -1])
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_sample_weighter_dataframe_with_date_col():
+    """Test SampleWeighter with DataFrame input using date_col parameter."""
+    weighter = SampleWeighter(k=1.0, ref_date="2023-01-01", date_col="Date")
+    
+    df = pd.DataFrame({
+        "Date": ["2023-01-01", "2022-01-01", "2021-01-01"],
+        "Other": [1, 2, 3]
+    })
+    
+    weights = weighter.transform(df)
+    
+    # Should extract Date column and calculate weights
+    np.testing.assert_almost_equal(weights[0], 1.0)
+    np.testing.assert_almost_equal(weights[1], 0.5, decimal=3)
+    np.testing.assert_almost_equal(weights[2], 1/3, decimal=3)
+
+
+def test_sample_weighter_dataframe_missing_date_col():
+    """Test SampleWeighter with DataFrame missing date_col falls back to first column."""
+    weighter = SampleWeighter(k=1.0, ref_date="2023-01-01", date_col="MissingCol")
+    
+    df = pd.DataFrame({
+        "Date": ["2023-01-01", "2022-01-01"],
+        "Other": [1, 2]
+    })
+    
+    # Should fall back to first column
+    weights = weighter.transform(df)
+    
+    # Should still work (uses first column as fallback)
+    assert len(weights) == 2
+
+
+def test_ranked_encoder_fit():
+    """Test RankedCategoryEncoder.fit() method (no-op, returns self)."""
+    encoder = RankedCategoryEncoder(mapping={"E3": 0, "E4": 1})
+    
+    X = pd.Series(["E3", "E4"])
+    y = pd.Series([100, 200])
+    
+    result = encoder.fit(X, y)
+    
+    # Should return self
+    assert result is encoder
+    
+    # Mapping should be unchanged
+    assert encoder.mapping == {"E3": 0, "E4": 1}
+
+
+def test_proximity_encoder_fit():
+    """Test ProximityEncoder.fit() method (no-op, returns self)."""
+    with patch('src.xgboost.preprocessing.GeoMapper'):
+        encoder = ProximityEncoder()
+        
+        X = pd.Series(["NY", "SF"])
+        y = pd.Series([100, 200])
+        
+        result = encoder.fit(X, y)
+        
+        # Should return self
+        assert result is encoder
+
+
+def test_sample_weighter_fit():
+    """Test SampleWeighter.fit() method (no-op, returns self)."""
+    weighter = SampleWeighter(k=1.0, ref_date="2023-01-01")
+    
+    X = pd.Series(["2023-01-01", "2022-01-01"])
+    y = pd.Series([100, 200])
+    
+    result = weighter.fit(X, y)
+    
+    # Should return self
+    assert result is weighter
+    
+    # Parameters should be unchanged
+    assert weighter.k == 1.0
+
+
+def test_ranked_encoder_list_input():
+    """Test RankedCategoryEncoder with list input."""
+    encoder = RankedCategoryEncoder(mapping={"E3": 0, "E4": 1})
+    
+    X = ["E3", "E4", "E5"]
+    result = encoder.transform(X)
+    
+    expected = np.array([0, 1, -1])
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_sample_weighter_config_key():
+    """Test SampleWeighter loads k from config when not provided."""
+    with patch("src.xgboost.preprocessing.get_config") as mock_get_config:
+        mock_config = {
+            "model": {
+                "sample_weight_k": 2.0
+            }
+        }
+        mock_get_config.return_value = mock_config
+        
+        weighter = SampleWeighter()
+        
+        # Should load k from config
+        assert weighter.k == 2.0

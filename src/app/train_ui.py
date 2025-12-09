@@ -1,16 +1,72 @@
 import streamlit as st
 import pandas as pd
 import time
+import matplotlib.pyplot as plt
+import seaborn as sns
 from src.app.caching import load_data_cached as load_data
 from src.services.training_service import TrainingService
 from src.services.model_registry import ModelRegistry
 from src.app.config_ui import render_workflow_wizard, _reset_workflow_state
 from src.services.workflow_service import get_workflow_providers
+from src.services.analytics_service import AnalyticsService
 
 
 @st.cache_resource
 def get_training_service() -> TrainingService:
     return TrainingService()
+
+def render_data_overview(df: pd.DataFrame, summary: dict) -> None:
+    """Render overview metrics."""
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Samples", summary.get("total_samples", 0))
+    col2.metric("Unique Locations", summary.get("unique_locations", 0))
+    col3.metric("Unique Levels", summary.get("unique_levels", 0))
+
+def render_data_sample(df: pd.DataFrame, summary: dict) -> None:
+    """Render data sample preview."""
+    st.dataframe(df.head())
+    st.caption(f"Shape: {summary.get('shape')}")
+
+def render_salary_distribution(df: pd.DataFrame, target_col: str) -> None:
+    """Render salary distribution histogram."""
+    fig, ax = plt.subplots(figsize=(10, 5))
+    sns.histplot(data=df, x=target_col, kde=True, ax=ax)
+    ax.set_title(f"Distribution of {target_col}")
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"${x:,.0f}"))
+    st.pyplot(fig)
+    st.write("Statistics:")
+    st.dataframe(df[target_col].describe().T)
+
+def render_categorical_breakdown(df: pd.DataFrame) -> None:
+    """Render categorical breakdown charts."""
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**Level Counts**")
+        if "Level" in df.columns:
+            level_counts = df["Level"].value_counts()
+            st.bar_chart(level_counts)
+        else:
+            st.info("Level column not found in data.")
+    with c2:
+        st.markdown("**Top 20 Locations**")
+        if "Location" in df.columns:
+            loc_counts = df["Location"].value_counts().head(20)
+            st.bar_chart(loc_counts)
+        else:
+            st.info("Location column not found in data.")
+
+def render_correlations(df: pd.DataFrame, salary_cols: list) -> None:
+    """Render correlation heatmap."""
+    num_cols = ["YearsOfExperience", "YearsAtCompany"] + salary_cols
+    avail_num_cols = [c for c in num_cols if c in df.columns]
+    
+    if len(avail_num_cols) > 1:
+        corr = df[avail_num_cols].corr()
+        fig_corr, ax_corr = plt.subplots(figsize=(8, 6))
+        sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f", ax=ax_corr)
+        st.pyplot(fig_corr)
+    else:
+        st.warning("Need at least 2 numerical columns for correlation analysis.")
 
 def render_training_ui() -> None:
     """Renders the model training interface."""
@@ -42,6 +98,44 @@ def render_training_ui() -> None:
     if df is None:
         st.info("Please upload a CSV file to begin.")
         return
+    
+    # Data Analysis Section
+    with st.expander("Data Analysis", expanded=False):
+        analytics_service = AnalyticsService()
+        summary = analytics_service.get_data_summary(df)
+        
+        viz_options = [
+            "Overview Metrics",
+            "Data Sample",
+            "Salary Distribution",
+            "Categorical Breakdown",
+            "Correlations"
+        ]
+        
+        selected_viz = st.selectbox(
+            "Select Visualization",
+            viz_options,
+            key="data_analysis_viz"
+        )
+        
+        st.markdown("---")
+        
+        if selected_viz == "Overview Metrics":
+            render_data_overview(df, summary)
+        elif selected_viz == "Data Sample":
+            render_data_sample(df, summary)
+        elif selected_viz == "Salary Distribution":
+            salary_cols = [c for c in ["BaseSalary", "TotalComp", "Stock", "Bonus"] if c in df.columns]
+            if salary_cols:
+                target_col = st.selectbox("Select Component", salary_cols, key="salary_dist_component")
+                render_salary_distribution(df, target_col)
+            else:
+                st.warning("No salary columns found in data.")
+        elif selected_viz == "Categorical Breakdown":
+            render_categorical_breakdown(df)
+        elif selected_viz == "Correlations":
+            salary_cols = [c for c in ["BaseSalary", "TotalComp", "Stock", "Bonus"] if c in df.columns]
+            render_correlations(df, salary_cols)
     
     # AI-Powered Configuration Wizard (Required before training)
     st.markdown("---")

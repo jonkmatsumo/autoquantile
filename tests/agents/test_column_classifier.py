@@ -272,8 +272,18 @@ class TestRunColumnClassifierSync(unittest.TestCase):
             "id": "call_1"
         }]
         
+        # Final response with valid JSON when max_iterations reached
+        final_response = AIMessage(content=json.dumps({
+            "targets": [],
+            "features": ["Level"],
+            "ignore": [],
+            "reasoning": "Max iterations reached"
+        }))
+        final_response.tool_calls = []
+        
         mock_agent = MagicMock()
-        mock_agent.invoke.return_value = tool_call_response
+        # First call returns tool call, second call (when max_iterations reached) returns final response
+        mock_agent.invoke.side_effect = [tool_call_response, final_response]
         mock_llm.bind_tools.return_value = mock_agent
         
         with patch("src.agents.column_classifier.detect_column_dtype") as mock_tool:

@@ -72,8 +72,12 @@ def test_main_non_interactive_json(MockRegistry, mock_model, capsys):
     captured = capsys.readouterr()
     assert '"BaseSalary":' in captured.out
     
-def test_main_partial_args_error(mock_console):
+@patch("src.cli.inference_cli.ModelRegistry")
+def test_main_partial_args_error(MockRegistry, mock_console):
     # Should exit if partial non-interactive args
+    mock_registry_instance = MockRegistry.return_value
+    mock_registry_instance.list_models.return_value = []
+    
     with patch("sys.argv", ["script_name", "--level", "E5"]): # Missing others
          with pytest.raises(SystemExit):
              main()

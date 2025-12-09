@@ -1,3 +1,10 @@
+"""
+Tests for the standalone model_analysis module.
+
+Note: The model_analysis functionality has been integrated into the Inference tab
+as a collapsible "Model Analysis" section. These tests verify the standalone module
+still works correctly for backward compatibility.
+"""
 import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd

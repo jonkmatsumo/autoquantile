@@ -579,5 +579,200 @@ def test_reset_workflow_state():
         assert "encoding_mapping_Level" not in mock_st.session_state
 
 
+def test_render_workflow_wizard_error_handling():
+    """Test render_workflow_wizard handles errors gracefully."""
+    from src.app.config_ui import render_workflow_wizard
+    
+    df = pd.DataFrame({"Salary": [100000]})
+    
+    with patch("src.app.config_ui.st") as mock_st, \
+         patch("src.app.config_ui.WorkflowService") as mock_service_class:
+        
+        mock_service = MagicMock()
+        mock_service.start_workflow.side_effect = Exception("Workflow error")
+        mock_service_class.return_value = mock_service
+        
+        mock_st.session_state = {}
+        mock_st.button.return_value = True
+        mock_st.spinner.return_value.__enter__ = MagicMock()
+        mock_st.spinner.return_value.__exit__ = MagicMock()
+        mock_st.error = MagicMock()
+        
+        result = render_workflow_wizard(df)
+        
+        # Should show error message
+        mock_st.error.assert_called()
+        assert result is None
+
+
+def test_render_classification_phase_confirmation():
+    """Test _render_classification_phase confirmation flow."""
+    from src.app.config_ui import _render_classification_phase
+    
+    mock_service = MagicMock()
+    mock_service.confirm_classification.return_value = {
+        "phase": "encoding",
+        "status": "success",
+        "data": {}
+    }
+    
+    result = {
+        "phase": "classification",
+        "status": "success",
+        "data": {
+            "targets": ["Salary"],
+            "features": ["Level"],
+            "ignore": ["ID"],
+            "reasoning": "Test"
+        }
+    }
+    
+    df = pd.DataFrame({"Salary": [100], "Level": ["L3"], "ID": [1]})
+    
+    with patch("src.app.config_ui.st") as mock_st:
+        mock_st.subheader = MagicMock()
+        mock_st.expander.return_value.__enter__ = MagicMock()
+        mock_st.expander.return_value.__exit__ = MagicMock()
+        mock_st.data_editor.return_value = pd.DataFrame({
+            "Column": ["Salary", "Level", "ID"],
+            "Role": ["Target", "Feature", "Ignore"],
+            "Dtype": ["int64", "object", "int64"]
+        })
+        mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
+        # Mock button to return True for "Confirm & Continue"
+        mock_st.button.side_effect = lambda label, **kwargs: label == "Confirm & Continue"
+        mock_st.rerun = MagicMock()
+        mock_st.session_state = {}
+        mock_st.spinner.return_value.__enter__ = MagicMock()
+        mock_st.spinner.return_value.__exit__ = MagicMock()
+        
+        _render_classification_phase(mock_service, result, df)
+        
+        # Should call confirm_classification
+        mock_service.confirm_classification.assert_called_once()
+        # Should update session state
+        assert mock_st.session_state["workflow_phase"] == "encoding"
+
+
+def test_render_encoding_phase_confirmation():
+    """Test _render_encoding_phase confirmation flow."""
+    from src.app.config_ui import _render_encoding_phase
+    
+    mock_service = MagicMock()
+    mock_service.confirm_encoding.return_value = {
+        "phase": "configuration",
+        "status": "success",
+        "data": {}
+    }
+    
+    result = {
+        "phase": "encoding",
+        "status": "success",
+        "data": {
+            "encodings": {
+                "Level": {"type": "ordinal", "mapping": {"L1": 0, "L2": 1}}
+            },
+            "summary": "Test"
+        }
+    }
+    
+    with patch("src.app.config_ui.st") as mock_st:
+        mock_st.subheader = MagicMock()
+        mock_st.expander.return_value.__enter__ = MagicMock()
+        mock_st.expander.return_value.__exit__ = MagicMock()
+        mock_st.data_editor.return_value = pd.DataFrame({
+            "Column": ["Level"],
+            "Encoding": ["ordinal"],
+            "Mapping": ['{"L1": 0, "L2": 1}'],
+            "Notes": [""]
+        })
+        mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
+        mock_st.button.side_effect = lambda label, **kwargs: label == "Confirm & Continue"
+        mock_st.rerun = MagicMock()
+        mock_st.session_state = {}
+        mock_st.spinner.return_value.__enter__ = MagicMock()
+        mock_st.spinner.return_value.__exit__ = MagicMock()
+        
+        _render_encoding_phase(mock_service, result)
+        
+        mock_service.confirm_encoding.assert_called_once()
+        assert mock_st.session_state["workflow_phase"] == "configuration"
+
+
+def test_render_configuration_phase_confirmation():
+    """Test _render_configuration_phase confirmation flow."""
+    from src.app.config_ui import _render_configuration_phase
+    
+    mock_service = MagicMock()
+    mock_service.get_final_config.return_value = {
+        "model": {"targets": ["Salary"]},
+        "_metadata": {}
+    }
+    
+    result = {
+        "phase": "configuration",
+        "status": "success",
+        "data": {
+            "features": [{"name": "Level", "monotone_constraint": 1}],
+            "quantiles": [0.1, 0.5, 0.9],
+            "hyperparameters": {"training": {}, "cv": {}},
+            "reasoning": "Test"
+        }
+    }
+    
+    with patch("src.app.config_ui.st") as mock_st:
+        mock_st.subheader = MagicMock()
+        mock_st.expander.return_value.__enter__ = MagicMock()
+        mock_st.expander.return_value.__exit__ = MagicMock()
+        mock_st.data_editor.side_effect = [
+            pd.DataFrame({"Feature": ["Level"], "Constraint": [1], "Reasoning": [""]}),
+            pd.DataFrame({"Quantile": [0.1, 0.5, 0.9]})
+        ]
+        mock_st.columns.side_effect = [
+            [MagicMock(), MagicMock()],
+            [MagicMock(), MagicMock(), MagicMock()]
+        ]
+        mock_st.number_input.side_effect = [6, 0.1, 0.8, 0.8, 200, 5, 20]
+        # Button label is "Finalize Configuration" not "Confirm & Generate Config"
+        mock_st.button.side_effect = lambda label, **kwargs: label == "Finalize Configuration"
+        mock_st.rerun = MagicMock()
+        mock_st.session_state = {"workflow_result": {}}
+        
+        # Mock service.workflow to avoid AttributeError
+        mock_service.workflow = MagicMock()
+        mock_service.workflow.current_state = {"location_columns": []}
+        
+        config = _render_configuration_phase(mock_service, result)
+        
+        # Should get final config when button is clicked
+        mock_service.get_final_config.assert_called_once()
+        assert mock_st.session_state["workflow_phase"] == "complete"
+
+
+def test_render_workflow_wizard_complete_phase():
+    """Test render_workflow_wizard when phase is complete."""
+    from src.app.config_ui import render_workflow_wizard
+    
+    df = pd.DataFrame({"Salary": [100000]})
+    
+    with patch("src.app.config_ui.st") as mock_st, \
+         patch("src.app.config_ui._render_complete_phase") as mock_render_complete:
+        
+        mock_st.session_state = {
+            "workflow_phase": "complete",
+            "workflow_result": {
+                "phase": "complete",
+                "final_config": {"model": {"targets": ["Salary"]}}
+            }
+        }
+        
+        mock_render_complete.return_value = {"model": {"targets": ["Salary"]}}
+        
+        result = render_workflow_wizard(df)
+        
+        mock_render_complete.assert_called_once()
+        assert result is not None
+
+
 
 

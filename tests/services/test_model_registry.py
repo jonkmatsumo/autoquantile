@@ -66,3 +66,33 @@ class TestModelRegistry(unittest.TestCase):
     def test_save_model_deprecated(self):
         # Just ensure it doesn't crash on dummy call
         self.registry.save_model(None, "test")
+    
+    @patch("src.services.model_registry.mlflow.pyfunc.load_model")
+    def test_load_model_error(self, mock_load):
+        """Test load_model handles errors gracefully."""
+        mock_load.side_effect = Exception("Model not found")
+        
+        with self.assertRaises(Exception) as cm:
+            self.registry.load_model("invalid_run")
+        
+        self.assertIn("Model not found", str(cm.exception))
+    
+    @patch("src.services.model_registry.mlflow.search_runs")
+    def test_list_models_empty(self, mock_search):
+        """Test list_models with no runs."""
+        mock_search.return_value = pd.DataFrame()
+        
+        models = self.registry.list_models()
+        
+        self.assertEqual(len(models), 0)
+        self.assertIsInstance(models, list)
+    
+    @patch("src.services.model_registry.mlflow.search_runs")
+    def test_list_models_search_error(self, mock_search):
+        """Test list_models handles search errors."""
+        mock_search.side_effect = Exception("MLflow connection error")
+        
+        with self.assertRaises(Exception) as cm:
+            self.registry.list_models()
+        
+        self.assertIn("MLflow connection error", str(cm.exception))

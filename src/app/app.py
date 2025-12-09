@@ -5,6 +5,7 @@ import traceback
 import os
 import sys
 import matplotlib.pyplot as plt
+import seaborn as sns
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
@@ -22,6 +23,7 @@ from src.utils.logger import setup_logging
 
 
 from src.services.model_registry import ModelRegistry
+from src.services.analytics_service import AnalyticsService
 
 
 def render_model_information(forecaster: Any, run_id: str, runs: List[Dict[str, Any]]) -> None:
@@ -161,6 +163,53 @@ def render_inference_ui() -> None:
     
     # Display model information before the input form
     render_model_information(forecaster, run_id, runs)
+    
+    # Model Analysis Section
+    with st.expander("Model Analysis", expanded=False):
+        analytics_service = AnalyticsService()
+        targets = analytics_service.get_available_targets(forecaster)
+        
+        if not targets:
+            st.warning("No targets available in this model.")
+        else:
+            viz_options = ["Feature Importance"]
+            selected_viz = st.selectbox(
+                "Select Visualization",
+                viz_options,
+                key="model_analysis_viz"
+            )
+            
+            st.markdown("---")
+            
+            if selected_viz == "Feature Importance":
+                selected_target = st.selectbox(
+                    "Select Target Component",
+                    targets,
+                    key="model_analysis_target"
+                )
+                
+                if selected_target:
+                    quantiles = analytics_service.get_available_quantiles(forecaster, selected_target)
+                    if quantiles:
+                        selected_q_val = st.selectbox(
+                            "Select Quantile",
+                            quantiles,
+                            format_func=lambda x: f"P{int(x*100)}",
+                            key="model_analysis_quantile"
+                        )
+                        
+                        df_imp = analytics_service.get_feature_importance(forecaster, selected_target, selected_q_val)
+                        if df_imp is not None and not df_imp.empty:
+                            st.dataframe(df_imp, width="stretch")
+                            
+                            fig, ax = plt.subplots(figsize=(10, 6))
+                            sns.barplot(data=df_imp.head(20), x="Gain", y="Feature", ax=ax, palette="viridis", hue="Feature", legend=False)
+                            ax.set_title(f"Top 20 Features for {selected_target} (P{int(selected_q_val*100)})")
+                            st.pyplot(fig)
+                        else:
+                            st.warning(f"No feature importance scores found for {selected_target} at P{int(selected_q_val*100)}.")
+                    else:
+                        st.warning(f"No quantiles available for target {selected_target}.")
     
     st.markdown("---")
     
