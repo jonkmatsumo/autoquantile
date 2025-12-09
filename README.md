@@ -82,83 +82,116 @@ To run the unit tests:
 python3 -m pytest tests/
 ```
 
-## Configuration
+## AI-Powered Configuration Workflow
 
-The model and data processing are configurable through a structured dictionary. This configuration can be edited **inline** directly in the web app, inferred automatically using **LLM (OpenAI/Gemini)** suggestions, or provided as a `config.json` file when using the CLI.
+AutoQuantile features an advanced **multi-step agentic workflow** powered by **LangGraph** that intelligently generates model configurations through a collaborative process between specialized AI agents and human oversight.
 
-### Configuration Structure
+### Workflow Overview
 
-The configuration dictionary should follow this structure:
+The configuration generation process follows a structured 3-phase workflow, with each phase handled by a specialized AI agent:
 
-#### 1. Mappings (`mappings`)
-Defines how categorical data is mapped to numerical values.
+#### Phase 1: Column Classification
+The **Column Classification Agent** analyzes your dataset to identify:
+- **Targets**: Columns to predict (e.g., salary components)
+- **Features**: Columns to use as input features
+- **Ignored**: Columns to exclude (e.g., IDs, metadata)
 
-- **`levels`**: Maps job levels (e.g., "E3", "E4") to ordinal integers (0, 1, 2...).
-  ```json
-  "levels": {
-      "E3": 0,
-      "E4": 1,
-      ...
-  }
-  ```
-- **`location_targets`**: Maps major cities to "Cost Zones" (integers). Lower numbers typically represent higher cost of living.
-  ```json
-  "location_targets": {
-      "New York, NY": 1,
-      "San Francisco, CA": 1,
-      "Austin, TX": 3,
-      ...
-  }
-  ```
+The agent uses data analysis tools to:
+- Compute correlation matrices between columns
+- Analyze column statistics (dtypes, null counts, unique values)
+- Detect semantic types (numeric, categorical, datetime, boolean)
+- Provide reasoning for each classification decision
 
-#### 2. Location Settings (`location_settings`)
-Controls the proximity matching logic.
+**Human Review**: You can review and modify the agent's classifications before proceeding.
 
-- **`max_distance_km`**: The maximum distance (in km) for a city to be considered part of a target city's zone. If a city is further than this from any target, it falls into a default "Unknown" zone.
+#### Phase 2: Feature Encoding
+The **Feature Encoding Agent** determines optimal encoding strategies for categorical features:
+- **Ordinal Encoding**: For features with inherent ordering (e.g., job levels: E3 < E4 < E5)
+- **One-Hot Encoding**: For nominal categories with few unique values
+- **Proximity Encoding**: For geographic features (cities grouped by distance)
+- **Label Encoding**: For high-cardinality categorical features
 
-#### 3. Model Settings (`model`)
-Configures the XGBoost model and feature engineering.
+The agent uses tools to:
+- Detect ordinal patterns in categorical data
+- Analyze unique value counts and distributions
+- Examine correlation with target variables
+- Generate encoding mappings where applicable
 
-- **`targets`**: List of salary components to predict (e.g., "BaseSalary", "Stock").
-- **`quantiles`**: List of quantiles to predict (e.g., 0.25, 0.50, 0.75).
-- **`sample_weight_k`**: Decay factor for sample weighting based on recency. Higher `k` gives more weight to recent data.
-- **`features`**: List of features to use in the model.
-  - **`name`**: Feature name (must match column in processed data).
-  - **`monotone_constraint`**: Enforces monotonic relationships.
-    - `1`: Increasing constraint (higher feature value -> higher prediction).
-    - `0`: No constraint.
-    - `-1`: Decreasing constraint.
-- **`hyperparameters`** (Optional): XGBoost parameters for training and cross-validation. If omitted, default values are used.
-  - **`training`**: Parameters passed to `xgb.train` (e.g., `max_depth`, `eta`).
-  - **`cv`**: Parameters passed to `xgb.cv` (e.g., `num_boost_round`, `nfold`).
+**Human Review**: You can adjust encoding types and mappings before finalizing.
 
-### Configuration Template
+#### Phase 3: Model Configuration
+The **Model Configuration Agent** proposes:
+- **Monotonic Constraints**: Enforces relationships between features and predictions
+  - `1`: Increasing (higher feature → higher prediction)
+  - `0`: No constraint
+  - `-1`: Decreasing (higher feature → lower prediction)
+- **Quantiles**: Optimal quantile levels for prediction (e.g., [0.1, 0.25, 0.5, 0.75, 0.9])
+- **Hyperparameters**: XGBoost training parameters (max_depth, learning rate, etc.)
 
-Below is a complete example of the configuration structure. valid JSON format:
+The agent considers:
+- Feature correlations with targets
+- Data characteristics (sample size, feature distributions)
+- Best practices for quantile regression
+
+**Human Review**: You can fine-tune hyperparameters, quantiles, and constraints.
+
+### Using the Workflow
+
+#### Via Web Interface
+1. Launch the Streamlit app: `streamlit run src/app/app.py`
+2. Upload your CSV dataset
+3. Click **"Start AI-Powered Configuration Wizard"**
+4. Review and confirm each phase:
+   - Modify classifications if needed
+   - Adjust encoding strategies
+   - Refine model parameters
+5. The workflow generates a complete configuration ready for training
+
+#### Supported LLM Providers
+- **OpenAI** (GPT-4, GPT-3.5): Requires `OPENAI_API_KEY` environment variable
+- **Google Gemini**: Requires `GEMINI_API_KEY` environment variable
+
+The system automatically detects available providers based on installed packages and API keys.
+
+### Configuration Output
+
+The workflow generates a structured configuration dictionary:
 
 ```json
 {
     "mappings": {
-        "levels": {"E3": 0, "E4": 1},
-        "location_targets": {"New York, NY": 1}
+        "levels": {"E3": 0, "E4": 1, "E5": 2},
+        "location_targets": {"New York, NY": 1, "San Francisco, CA": 1}
     },
-    "location_settings": {"max_distance_km": 50},
+    "location_settings": {"max_distance_km": 50.0},
     "model": {
         "targets": ["BaseSalary"],
-        "quantiles": [0.5],
+        "quantiles": [0.1, 0.25, 0.5, 0.75, 0.9],
         "sample_weight_k": 1.0,
         "features": [
-            {"name": "Level_Enc", "monotone_constraint": 1}
+            {"name": "Level_Enc", "monotone_constraint": 1},
+            {"name": "Location_Enc", "monotone_constraint": 0}
         ],
         "hyperparameters": {
             "training": {
-                "objective": "reg:quantileerror",
-                "max_depth": 6
+                "max_depth": 6,
+                "eta": 0.1,
+                "subsample": 0.8
             },
             "cv": {
-                "num_boost_round": 100
+                "num_boost_round": 200,
+                "nfold": 5
             }
         }
+    },
+    "_metadata": {
+        "classification_reasoning": "Agent reasoning for column classification",
+        "encoding_summary": "Summary of encoding decisions",
+        "configuration_reasoning": "Rationale for model configuration"
     }
 }
 ```
+
+### Manual Configuration
+
+You can also provide a configuration file directly (`config.json`) when using the CLI, or edit configurations manually in the web interface after generation.
