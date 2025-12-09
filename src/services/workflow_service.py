@@ -1,0 +1,266 @@
+"""
+Workflow Service for orchestrating the agentic configuration generation.
+
+This service wraps the LangGraph workflow and provides a simple interface
+for the Streamlit UI to manage the multi-step configuration process.
+"""
+
+import json
+from typing import Any, Dict, List, Optional
+import pandas as pd
+
+from src.llm.client import get_langchain_llm, get_available_providers
+from src.agents.workflow import ConfigWorkflow
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+class WorkflowService:
+    """
+    Service to manage the agentic configuration workflow.
+    
+    This service provides methods to:
+    - Start a new workflow with a dataset
+    - Get current workflow state
+    - Confirm and modify phase outputs
+    - Retrieve the final configuration
+    """
+    
+    def __init__(self, provider: str = "openai", model: Optional[str] = None):
+        """
+        Initialize the workflow service.
+        
+        Args:
+            provider: LLM provider name ("openai" or "gemini").
+            model: Optional model name override.
+        """
+        self.provider = provider
+        self.model = model
+        self.workflow: Optional[ConfigWorkflow] = None
+        self.current_state: Dict[str, Any] = {}
+        
+        # Initialize LLM
+        try:
+            self.llm = get_langchain_llm(provider=provider, model=model)
+            logger.info(f"WorkflowService initialized with provider: {provider}")
+        except Exception as e:
+            logger.error(f"Failed to initialize LLM: {e}")
+            raise
+    
+    def start_workflow(self, df: pd.DataFrame, sample_size: int = 50) -> Dict[str, Any]:
+        """
+        Start a new configuration workflow with the given dataset.
+        
+        This runs the column classification agent and returns its results
+        for user review.
+        
+        Args:
+            df: Input DataFrame to analyze.
+            sample_size: Number of rows to sample for analysis.
+            
+        Returns:
+            Dictionary with classification results and metadata.
+        """
+        logger.info(f"Starting workflow with {len(df)} rows, sampling {sample_size}")
+        
+        # Prepare data for workflow
+        sample_df = df.head(sample_size)
+        df_json = sample_df.to_json()
+        columns = df.columns.tolist()
+        dtypes = {col: str(df[col].dtype) for col in columns}
+        dataset_size = len(df)
+        
+        # Create and start workflow
+        self.workflow = ConfigWorkflow(self.llm)
+        
+        try:
+            self.current_state = self.workflow.start(
+                df_json=df_json,
+                columns=columns,
+                dtypes=dtypes,
+                dataset_size=dataset_size
+            )
+            
+            return self._format_phase_result("classification")
+            
+        except Exception as e:
+            logger.error(f"Workflow start failed: {e}")
+            return {
+                "phase": "classification",
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def get_current_state(self) -> Dict[str, Any]:
+        """
+        Get the current workflow state.
+        
+        Returns:
+            Current state dictionary with phase info and results.
+        """
+        if not self.workflow:
+            return {"phase": "not_started", "status": "pending"}
+        
+        phase = self.workflow.get_current_phase()
+        return self._format_phase_result(phase)
+    
+    def confirm_classification(
+        self, 
+        modifications: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Confirm the column classification and proceed to encoding.
+        
+        Args:
+            modifications: Optional dict with modified classification:
+                - targets: List of target column names
+                - features: List of feature column names
+                - ignore: List of columns to ignore
+                
+        Returns:
+            Dictionary with encoding results.
+        """
+        if not self.workflow:
+            raise RuntimeError("Workflow not started")
+        
+        logger.info("Confirming classification phase")
+        
+        try:
+            self.current_state = self.workflow.confirm_classification(modifications)
+            return self._format_phase_result("encoding")
+            
+        except Exception as e:
+            logger.error(f"Classification confirmation failed: {e}")
+            return {
+                "phase": "encoding",
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def confirm_encoding(
+        self,
+        modifications: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Confirm the feature encoding and proceed to model configuration.
+        
+        Args:
+            modifications: Optional dict with modified encodings:
+                - encodings: Dict mapping column names to encoding configs
+                
+        Returns:
+            Dictionary with final configuration.
+        """
+        if not self.workflow:
+            raise RuntimeError("Workflow not started")
+        
+        logger.info("Confirming encoding phase")
+        
+        try:
+            self.current_state = self.workflow.confirm_encoding(modifications)
+            return self._format_phase_result("configuration")
+            
+        except Exception as e:
+            logger.error(f"Encoding confirmation failed: {e}")
+            return {
+                "phase": "configuration",
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def get_final_config(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the final configuration if workflow is complete.
+        
+        Returns:
+            Final configuration dictionary or None if not complete.
+        """
+        if not self.workflow:
+            return None
+        
+        return self.workflow.get_final_config()
+    
+    def is_complete(self) -> bool:
+        """Check if the workflow has completed successfully."""
+        if not self.workflow:
+            return False
+        return self.workflow.get_current_phase() == "complete"
+    
+    def _format_phase_result(self, phase: str) -> Dict[str, Any]:
+        """
+        Format the current state for UI consumption.
+        
+        Args:
+            phase: Current phase name.
+            
+        Returns:
+            Formatted result dictionary.
+        """
+        result = {
+            "phase": phase,
+            "status": "success" if not self.current_state.get("error") else "error"
+        }
+        
+        if self.current_state.get("error"):
+            result["error"] = self.current_state["error"]
+        
+        if phase == "classification" or phase == "starting":
+            classification = self.current_state.get("column_classification", {})
+            result["data"] = {
+                "targets": classification.get("targets", []),
+                "features": classification.get("features", []),
+                "ignore": classification.get("ignore", []),
+                "reasoning": classification.get("reasoning", "")
+            }
+            result["confirmed"] = self.current_state.get("classification_confirmed", False)
+            
+        elif phase == "encoding":
+            encodings = self.current_state.get("feature_encodings", {})
+            result["data"] = {
+                "encodings": encodings.get("encodings", {}),
+                "summary": encodings.get("summary", "")
+            }
+            result["confirmed"] = self.current_state.get("encodings_confirmed", False)
+            
+        elif phase == "configuration" or phase == "complete":
+            model_config = self.current_state.get("model_config", {})
+            final_config = self.current_state.get("final_config")
+            
+            result["data"] = {
+                "features": model_config.get("features", []),
+                "quantiles": model_config.get("quantiles", []),
+                "hyperparameters": model_config.get("hyperparameters", {}),
+                "reasoning": model_config.get("reasoning", "")
+            }
+            
+            if final_config:
+                result["final_config"] = final_config
+                result["status"] = "complete"
+        
+        return result
+
+
+def create_workflow_service(provider: str = "openai", model: Optional[str] = None) -> WorkflowService:
+    """
+    Factory function to create a WorkflowService instance.
+    
+    Args:
+        provider: LLM provider name.
+        model: Optional model name.
+        
+    Returns:
+        WorkflowService instance.
+    """
+    return WorkflowService(provider=provider, model=model)
+
+
+def get_workflow_providers() -> List[str]:
+    """
+    Get list of available LLM providers for the workflow.
+    
+    Returns:
+        List of provider names.
+    """
+    return get_available_providers()
+
