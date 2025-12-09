@@ -27,12 +27,31 @@ def compute_correlation_matrix(df_json: str, columns: Optional[str] = None) -> s
     Returns:
         JSON string of correlation matrix with column pairs and their correlations.
     """
+    from src.utils.logger import get_logger
+    logger = get_logger(__name__)
+    
+    logger.debug(f"compute_correlation_matrix called with columns: {columns}")
+    logger.debug(f"df_json type: {type(df_json)}, length: {len(df_json) if df_json else 0}")
+    
     # Use StringIO to avoid deprecation warning
     # Parse JSON string - df.to_json() creates column-oriented JSON
     # Use json.loads then DataFrame.from_dict to preserve types better
     import json as json_lib
-    data_dict = json_lib.loads(df_json)
-    df = pd.DataFrame.from_dict(data_dict)
+    
+    try:
+        data_dict = json_lib.loads(df_json)
+        logger.debug(f"Successfully parsed df_json for correlation matrix")
+    except json_lib.JSONDecodeError as e:
+        logger.error(f"Failed to parse df_json as JSON in compute_correlation_matrix: {e}")
+        logger.error(f"df_json preview: {df_json[:500] if df_json else 'None'}")
+        return json.dumps({"error": f"Invalid JSON in df_json parameter: {str(e)}"})
+    
+    try:
+        df = pd.DataFrame.from_dict(data_dict)
+        logger.debug(f"Created DataFrame for correlation (shape: {df.shape})")
+    except Exception as e:
+        logger.error(f"Failed to create DataFrame in compute_correlation_matrix: {e}", exc_info=True)
+        return json.dumps({"error": f"Failed to create DataFrame: {str(e)}"})
     
     if columns:
         col_list = [c.strip() for c in columns.split(",")]
@@ -77,12 +96,30 @@ def get_column_statistics(df_json: str, column: str) -> str:
         JSON string with statistics including dtype, nulls, unique count,
         and numeric stats (mean, std, min, max, quartiles) if applicable.
     """
+    from src.utils.logger import get_logger
+    logger = get_logger(__name__)
+    
+    logger.debug(f"get_column_statistics called with column: {column}")
+    
     # Use StringIO to avoid deprecation warning
     # Parse JSON string - df.to_json() creates column-oriented JSON
     # Use json.loads then DataFrame.from_dict to preserve types better
     import json as json_lib
-    data_dict = json_lib.loads(df_json)
-    df = pd.DataFrame.from_dict(data_dict)
+    
+    try:
+        data_dict = json_lib.loads(df_json)
+        logger.debug(f"Successfully parsed df_json for column statistics")
+    except json_lib.JSONDecodeError as e:
+        logger.error(f"Failed to parse df_json as JSON in get_column_statistics: {e}")
+        logger.error(f"df_json preview: {df_json[:500] if df_json else 'None'}")
+        return json.dumps({"error": f"Invalid JSON in df_json parameter: {str(e)}"})
+    
+    try:
+        df = pd.DataFrame.from_dict(data_dict)
+        logger.debug(f"Created DataFrame for column statistics (shape: {df.shape})")
+    except Exception as e:
+        logger.error(f"Failed to create DataFrame in get_column_statistics: {e}", exc_info=True)
+        return json.dumps({"error": f"Failed to create DataFrame: {str(e)}"})
     
     if column not in df.columns:
         return json.dumps({"error": f"Column '{column}' not found in DataFrame"})
@@ -302,12 +339,32 @@ def detect_column_dtype(df_json: str, column: str) -> str:
     Returns:
         JSON string with inferred semantic type and reasoning.
     """
+    from src.utils.logger import get_logger
+    logger = get_logger(__name__)
+    
+    logger.debug(f"detect_column_dtype called with column: {column}")
+    logger.debug(f"df_json type: {type(df_json)}, length: {len(df_json) if df_json else 0}")
+    logger.debug(f"df_json preview: {df_json[:200] if df_json else 'None'}")
+    
     # Use StringIO to avoid deprecation warning
     # Parse JSON string - df.to_json() creates column-oriented JSON
     # Use json.loads then DataFrame.from_dict to preserve types better
     import json as json_lib
-    data_dict = json_lib.loads(df_json)
-    df = pd.DataFrame.from_dict(data_dict)
+    
+    try:
+        data_dict = json_lib.loads(df_json)
+        logger.debug(f"Successfully parsed df_json, keys: {list(data_dict.keys())[:10] if isinstance(data_dict, dict) else 'not a dict'}")
+    except json_lib.JSONDecodeError as e:
+        logger.error(f"Failed to parse df_json as JSON: {e}")
+        logger.error(f"df_json content (first 500 chars): {df_json[:500] if df_json else 'None'}")
+        return json.dumps({"error": f"Invalid JSON in df_json parameter: {str(e)}"})
+    
+    try:
+        df = pd.DataFrame.from_dict(data_dict)
+        logger.debug(f"Created DataFrame with shape: {df.shape}, columns: {df.columns.tolist()}")
+    except Exception as e:
+        logger.error(f"Failed to create DataFrame from dict: {e}", exc_info=True)
+        return json.dumps({"error": f"Failed to create DataFrame: {str(e)}"})
     
     if column not in df.columns:
         return json.dumps({"error": f"Column '{column}' not found in DataFrame"})
@@ -362,7 +419,10 @@ def detect_column_dtype(df_json: str, column: str) -> str:
     if pd.api.types.is_object_dtype(col_data) or pd.api.types.is_string_dtype(col_data):
         # Try to parse as datetime
         try:
-            parsed = pd.to_datetime(col_data.dropna().head(10), errors='coerce')
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=UserWarning, message='.*Could not infer format.*')
+                parsed = pd.to_datetime(col_data.dropna().head(10), errors='coerce')
             if parsed.notna().sum() > 5:
                 result["semantic_type"] = "datetime"
                 result["reasoning"].append("String values parseable as dates")

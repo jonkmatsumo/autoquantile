@@ -63,29 +63,85 @@ class WorkflowService:
             Dictionary with classification results and metadata.
         """
         logger.info(f"Starting workflow with {len(df)} rows, sampling {sample_size}")
+        logger.debug(f"DataFrame columns: {df.columns.tolist()}")
+        logger.debug(f"DataFrame dtypes: {df.dtypes.to_dict()}")
         
         # Prepare data for workflow
         sample_df = df.head(sample_size)
-        df_json = sample_df.to_json()
+        logger.debug(f"Sampled DataFrame shape: {sample_df.shape}")
+        
+        try:
+            # Use orient='columns' to ensure consistent format
+            # This creates a dict where keys are column names and values are lists
+            df_json = sample_df.to_json(orient='columns', date_format='iso')
+            logger.debug(f"Generated df_json length: {len(df_json)} characters")
+            logger.debug(f"df_json preview (first 200 chars): {df_json[:200]}")
+            
+            # Validate JSON can be parsed
+            import json
+            try:
+                parsed = json.loads(df_json)
+                logger.debug(f"df_json is valid JSON, parsed type: {type(parsed)}")
+                if isinstance(parsed, dict):
+                    logger.debug(f"JSON has {len(parsed)} top-level keys: {list(parsed.keys())[:10]}")
+            except json.JSONDecodeError as json_err:
+                logger.error(f"df_json is not valid JSON: {json_err}")
+                logger.error(f"df_json content (first 500 chars): {df_json[:500]}")
+                logger.error(f"df_json content (last 200 chars): {df_json[-200:]}")
+                # Try alternative serialization
+                logger.warning("Attempting alternative JSON serialization...")
+                try:
+                    df_json = sample_df.to_json(orient='records', date_format='iso')
+                    json.loads(df_json)  # Validate
+                    logger.info("Alternative serialization (orient='records') succeeded")
+                except Exception as alt_err:
+                    logger.error(f"Alternative serialization also failed: {alt_err}")
+                    raise ValueError(f"Failed to serialize DataFrame to JSON: {json_err}") from json_err
+            
+        except Exception as e:
+            logger.error(f"Failed to prepare DataFrame JSON: {e}", exc_info=True)
+            raise
+        
         columns = df.columns.tolist()
         dtypes = {col: str(df[col].dtype) for col in columns}
         dataset_size = len(df)
         
+        logger.info(f"Prepared workflow input: {len(columns)} columns, {dataset_size} total rows")
+        logger.debug(f"Column dtypes: {dtypes}")
+        
         # Create and start workflow
-        self.workflow = ConfigWorkflow(self.llm)
+        try:
+            self.workflow = ConfigWorkflow(self.llm)
+            logger.debug("ConfigWorkflow instance created")
+        except Exception as e:
+            logger.error(f"Failed to create ConfigWorkflow: {e}", exc_info=True)
+            raise
         
         try:
+            logger.info("Calling workflow.start()...")
             self.current_state = self.workflow.start(
                 df_json=df_json,
                 columns=columns,
                 dtypes=dtypes,
                 dataset_size=dataset_size
             )
+            logger.info("workflow.start() completed successfully")
+            logger.debug(f"Current state keys: {list(self.current_state.keys())}")
+            
+            # Only log if there's an actual error (not None or empty)
+            error_value = self.current_state.get("error")
+            if error_value:
+                logger.error(f"Workflow state contains error: {error_value}")
+            else:
+                logger.debug("Workflow state has no errors")
             
             return self._format_phase_result("classification")
             
         except Exception as e:
-            logger.error(f"Workflow start failed: {e}")
+            logger.error(f"Workflow start failed: {e}", exc_info=True)
+            logger.error(f"Exception type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return {
                 "phase": "classification",
                 "status": "error",

@@ -66,24 +66,33 @@ def classify_columns_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str,
         State updates with classification results.
     """
     logger.info("Running column classification agent...")
+    logger.debug(f"State keys: {list(state.keys())}")
+    logger.debug(f"df_json type: {type(state.get('df_json'))}, length: {len(state.get('df_json', '')) if state.get('df_json') else 0}")
+    logger.debug(f"Columns: {state.get('columns', [])}")
+    logger.debug(f"Dtypes: {state.get('dtypes', {})}")
     
     try:
+        logger.info("Calling run_column_classifier_sync...")
         result = run_column_classifier_sync(
             llm=llm,
             df_json=state["df_json"],
             columns=state["columns"],
             dtypes=state["dtypes"]
         )
+        logger.info("run_column_classifier_sync completed successfully")
+        logger.debug(f"Classification result keys: {list(result.keys()) if isinstance(result, dict) else 'not a dict'}")
         
         # Compute correlations for later use
         correlation_data = None
         try:
+            logger.debug("Computing correlation matrix...")
             correlation_data = compute_correlation_matrix.invoke({
                 "df_json": state["df_json"],
                 "columns": None  # All numeric columns
             })
+            logger.debug(f"Correlation data computed (length: {len(correlation_data) if correlation_data else 0})")
         except Exception as e:
-            logger.warning(f"Could not compute correlations: {e}")
+            logger.warning(f"Could not compute correlations: {e}", exc_info=True)
         
         return {
             "column_classification": result,
@@ -94,7 +103,10 @@ def classify_columns_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str,
         }
         
     except Exception as e:
-        logger.error(f"Column classification failed: {e}")
+        logger.error(f"Column classification failed: {e}", exc_info=True)
+        logger.error(f"Exception type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return {
             "column_classification": {},
             "classification_confirmed": False,

@@ -88,18 +88,32 @@ def parse_classification_response(response_content: str) -> Dict[str, Any]:
     Returns:
         Parsed classification dictionary.
     """
+    logger.debug(f"Parsing classification response (length: {len(response_content) if response_content else 0})")
+    
     # Try to find JSON in the response
     try:
+        json_str = None
+        
         # Look for JSON block
         if "```json" in response_content:
+            logger.debug("Found ```json block")
             json_str = response_content.split("```json")[1].split("```")[0].strip()
         elif "```" in response_content:
+            logger.debug("Found ``` block (non-json)")
             json_str = response_content.split("```")[1].split("```")[0].strip()
         else:
             # Try to parse the whole response as JSON
+            logger.debug("No code blocks found, attempting to parse entire response as JSON")
             json_str = response_content.strip()
         
+        logger.debug(f"Extracted JSON string (length: {len(json_str) if json_str else 0})")
+        logger.debug(f"JSON string preview: {json_str[:200] if json_str else 'None'}")
+        
+        if not json_str:
+            raise ValueError("Empty JSON string extracted from response")
+        
         result = json.loads(json_str)
+        logger.debug(f"Successfully parsed JSON, keys: {list(result.keys()) if isinstance(result, dict) else 'not a dict'}")
         
         # Validate required keys
         if "targets" not in result:
@@ -234,17 +248,49 @@ def run_column_classifier_sync(
                 logger.info(f"Column classifier calling tool: {tool_name}")
                 
                 if tool_name in tools:
-                    tool_result = tools[tool_name].invoke(tool_args)
-                    
-                    from langchain_core.messages import ToolMessage
-                    messages.append(ToolMessage(
-                        content=str(tool_result),
-                        tool_call_id=tool_call["id"]
-                    ))
+                    try:
+                        logger.debug(f"Invoking tool {tool_name} with args: {tool_args}")
+                        tool_result = tools[tool_name].invoke(tool_args)
+                        logger.debug(f"Tool {tool_name} returned result (type: {type(tool_result)}, length: {len(str(tool_result)) if tool_result else 0})")
+                        logger.debug(f"Tool result preview: {str(tool_result)[:200] if tool_result else 'None'}")
+                        
+                        # Ensure tool result is a string
+                        if not isinstance(tool_result, str):
+                            logger.warning(f"Tool {tool_name} returned non-string result: {type(tool_result)}, converting to string")
+                            tool_result = str(tool_result)
+                        
+                        from langchain_core.messages import ToolMessage
+                        messages.append(ToolMessage(
+                            content=tool_result,
+                            tool_call_id=tool_call["id"]
+                        ))
+                        logger.debug(f"Added ToolMessage for {tool_name}")
+                    except Exception as tool_err:
+                        logger.error(f"Error invoking tool {tool_name}: {tool_err}", exc_info=True)
+                        logger.error(f"Tool args that caused error: {tool_args}")
+                        # Add error message to conversation
+                        from langchain_core.messages import ToolMessage
+                        messages.append(ToolMessage(
+                            content=f"Error executing tool {tool_name}: {str(tool_err)}",
+                            tool_call_id=tool_call["id"]
+                        ))
                 else:
                     logger.warning(f"Unknown tool requested: {tool_name}")
         else:
-            return parse_classification_response(response.content)
+            logger.info("No more tool calls, parsing final classification response")
+            logger.debug(f"Response content type: {type(response.content)}")
+            logger.debug(f"Response content length: {len(response.content) if response.content else 0}")
+            logger.debug(f"Response content preview: {response.content[:500] if response.content else 'None'}")
+            
+            try:
+                result = parse_classification_response(response.content)
+                logger.info("Successfully parsed classification response")
+                logger.debug(f"Parsed result keys: {list(result.keys())}")
+                return result
+            except Exception as parse_err:
+                logger.error(f"Failed to parse classification response: {parse_err}", exc_info=True)
+                logger.error(f"Response content that failed to parse: {response.content[:1000] if response.content else 'None'}")
+                raise
     
     logger.warning("Max iterations reached in column classifier")
     return parse_classification_response(messages[-1].content if messages else "")
