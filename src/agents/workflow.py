@@ -35,6 +35,7 @@ class WorkflowState(TypedDict, total=False):
     # Phase 1: Column Classification
     column_classification: Dict[str, Any]
     classification_confirmed: bool
+    location_columns: List[str]  # Extracted location columns
     
     # Phase 2: Feature Encoding
     feature_encodings: Dict[str, Any]
@@ -42,6 +43,7 @@ class WorkflowState(TypedDict, total=False):
     
     # Phase 3: Model Configuration
     model_config: Dict[str, Any]
+    location_settings: Dict[str, Any]  # max_distance_km setting
     
     # Computed data for later phases
     correlation_data: Optional[str]
@@ -82,6 +84,10 @@ def classify_columns_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str,
         logger.info("run_column_classifier_sync completed successfully")
         logger.debug(f"Classification result keys: {list(result.keys()) if isinstance(result, dict) else 'not a dict'}")
         
+        # Extract location columns from classification
+        location_columns = result.get("locations", [])
+        logger.debug(f"Detected location columns: {location_columns}")
+        
         # Compute correlations for later use
         correlation_data = None
         try:
@@ -97,6 +103,7 @@ def classify_columns_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str,
         return {
             "column_classification": result,
             "classification_confirmed": False,
+            "location_columns": location_columns,
             "correlation_data": correlation_data,
             "current_phase": "classification",
             "error": None
@@ -131,6 +138,7 @@ def encode_features_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str, 
     try:
         classification = state.get("column_classification", {})
         features = classification.get("features", [])
+        location_columns = state.get("location_columns", [])
         
         result = run_feature_encoder_sync(
             llm=llm,
@@ -138,6 +146,23 @@ def encode_features_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str, 
             features=features,
             dtypes=state["dtypes"]
         )
+        
+        # Automatically set proximity encoding for location columns
+        if location_columns and "encodings" in result:
+            for loc_col in location_columns:
+                if loc_col in result["encodings"]:
+                    # Override with proximity encoding
+                    result["encodings"][loc_col] = {
+                        "type": "proximity",
+                        "reasoning": "Location column detected in classification phase"
+                    }
+                else:
+                    # Add if not already present
+                    result["encodings"][loc_col] = {
+                        "type": "proximity",
+                        "reasoning": "Location column detected in classification phase"
+                    }
+            logger.debug(f"Set proximity encoding for location columns: {location_columns}")
         
         return {
             "feature_encodings": result,
@@ -213,11 +238,13 @@ def build_final_config_node(state: WorkflowState) -> Dict[str, Any]:
     classification = state.get("column_classification", {})
     encodings = state.get("feature_encodings", {})
     model_config = state.get("model_config", {})
+    location_columns = state.get("location_columns", [])
+    location_settings = state.get("location_settings", {"max_distance_km": 50})
     
     # Build mappings from encodings
     mappings = {
         "levels": {},
-        "location_targets": {}
+        "location_targets": {}  # Empty initially, user can populate later
     }
     
     feature_engineering = {
@@ -225,6 +252,7 @@ def build_final_config_node(state: WorkflowState) -> Dict[str, Any]:
         "proximity_cols": []
     }
     
+    # Process encodings
     for col, enc_config in encodings.get("encodings", {}).items():
         enc_type = enc_config.get("type", "")
         
@@ -237,12 +265,17 @@ def build_final_config_node(state: WorkflowState) -> Dict[str, Any]:
         elif enc_type == "proximity":
             feature_engineering["proximity_cols"].append(col)
     
+    # Also add location columns from classification (in case they weren't in encodings)
+    for loc_col in location_columns:
+        if loc_col not in feature_engineering["proximity_cols"]:
+            feature_engineering["proximity_cols"].append(loc_col)
+    
     # Build final config structure
     final_config = {
         "mappings": mappings,
         "feature_engineering": feature_engineering,
         "location_settings": {
-            "max_distance_km": 50.0
+            "max_distance_km": int(location_settings.get("max_distance_km", 50))
         },
         "model": {
             "targets": classification.get("targets", []),
@@ -455,6 +488,9 @@ class ConfigWorkflow:
             current_classification = self.current_state.get("column_classification", {})
             current_classification.update(modifications)
             update_state["column_classification"] = current_classification
+            # Also update location_columns if locations are in modifications
+            if "locations" in modifications:
+                update_state["location_columns"] = modifications["locations"]
         
         # Update state and resume
         self.compiled.update_state(config, update_state)

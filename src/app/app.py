@@ -121,7 +121,7 @@ def render_inference_ui() -> None:
                 val = st.number_input(feat, 0, 100, 5, key=f"input_{feat}")
                 input_data[feat] = val
             
-        if st.form_submit_button("Predict Compensation"):
+        if st.form_submit_button("Predict"):
             input_df = pd.DataFrame([input_data])
             
             with st.spinner("Predicting..."):

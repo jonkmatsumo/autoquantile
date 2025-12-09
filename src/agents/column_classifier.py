@@ -71,11 +71,11 @@ def build_classification_prompt(df_json: str, columns: List[str], dtypes: Dict[s
 ```
 
 Use the available tools to analyze the columns before making your classification. Focus on:
-1. Use `detect_column_dtype` on ambiguous columns to understand their semantic type
+1. Use `detect_column_dtype` on ambiguous columns to understand their semantic type (especially for string columns that might be locations)
 2. Use `compute_correlation_matrix` to see relationships between numeric columns
 3. Use `get_column_statistics` on potential target columns to verify they're suitable
 
-After your analysis, provide your final classification as JSON with keys: targets, features, ignore, reasoning."""
+After your analysis, provide your final classification as JSON with keys: targets, features, locations, ignore, reasoning."""
 
 
 def parse_classification_response(response_content: str) -> Dict[str, Any]:
@@ -120,6 +120,8 @@ def parse_classification_response(response_content: str) -> Dict[str, Any]:
             result["targets"] = []
         if "features" not in result:
             result["features"] = []
+        if "locations" not in result:
+            result["locations"] = []
         if "ignore" not in result:
             result["ignore"] = []
         if "reasoning" not in result:
@@ -132,6 +134,7 @@ def parse_classification_response(response_content: str) -> Dict[str, Any]:
         return {
             "targets": [],
             "features": [],
+            "locations": [],
             "ignore": [],
             "reasoning": f"Failed to parse response: {response_content[:200]}",
             "raw_response": response_content

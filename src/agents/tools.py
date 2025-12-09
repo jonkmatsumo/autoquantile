@@ -331,6 +331,7 @@ def detect_column_dtype(df_json: str, column: str) -> str:
     - text: String with high cardinality (possibly free text)
     - identifier: Likely an ID column (unique values, numeric pattern)
     - boolean: True/False or binary values
+    - location: Geographic/location data (cities, addresses, regions)
     
     Args:
         df_json: JSON string representation of the DataFrame.
@@ -430,10 +431,17 @@ def detect_column_dtype(df_json: str, column: str) -> str:
         except:
             pass
         
+        # Check if column might be location/geographic data
+        col_name_lower = column.lower()
+        location_keywords = ["location", "city", "address", "region", "state", "country", "place", "area", "zone"]
+        if any(keyword in col_name_lower for keyword in location_keywords):
+            result["semantic_type"] = "location"
+            result["reasoning"].append(f"Column name suggests geographic/location data: {column}")
+            return json.dumps(result, indent=2)
+        
         # Check uniqueness for categorical vs text
         if unique_ratio > 0.8:
             # Check if looks like ID
-            col_name_lower = column.lower()
             if "id" in col_name_lower or "key" in col_name_lower or "name" in col_name_lower:
                 result["semantic_type"] = "identifier"
                 result["reasoning"].append("High uniqueness and name suggests identifier")

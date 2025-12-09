@@ -25,7 +25,7 @@ from src.utils.csv_validator import validate_csv
 def render_workflow_wizard(df: pd.DataFrame, provider: str = "openai") -> Optional[Dict[str, Any]]:
     """
     Render the multi-step agentic workflow wizard.
-    
+
     Args:
         df: DataFrame to analyze.
         provider: LLM provider to use.
@@ -124,6 +124,7 @@ def _render_classification_phase(service: WorkflowService, result: Dict[str, Any
     all_columns = df.columns.tolist()
     targets = data.get("targets", [])
     features = data.get("features", [])
+    locations = data.get("locations", [])
     ignore = data.get("ignore", [])
     
     # Build unified editor
@@ -131,6 +132,8 @@ def _render_classification_phase(service: WorkflowService, result: Dict[str, Any
     for col in all_columns:
         if col in targets:
             role = "Target"
+        elif col in locations:
+            role = "Location"
         elif col in features:
             role = "Feature"
         elif col in ignore:
@@ -148,13 +151,13 @@ def _render_classification_phase(service: WorkflowService, result: Dict[str, Any
             "Column": st.column_config.TextColumn("Column Name", disabled=True),
             "Role": st.column_config.SelectboxColumn(
                 "Classification",
-                options=["Target", "Feature", "Ignore", "Unclassified"],
+                options=["Target", "Feature", "Location", "Ignore", "Unclassified"],
                 required=True
             ),
             "Dtype": st.column_config.TextColumn("Data Type", disabled=True)
         },
         hide_index=True,
-        use_container_width=True
+        width='stretch'
     )
     
     # Action buttons
@@ -165,6 +168,7 @@ def _render_classification_phase(service: WorkflowService, result: Dict[str, Any
             # Parse edited classification
             new_targets = []
             new_features = []
+            new_locations = []
             new_ignore = []
             
             for _, row in edited_df.iterrows():
@@ -174,12 +178,15 @@ def _render_classification_phase(service: WorkflowService, result: Dict[str, Any
                     new_targets.append(col_name)
                 elif role == "Feature":
                     new_features.append(col_name)
+                elif role == "Location":
+                    new_locations.append(col_name)
                 elif role == "Ignore":
                     new_ignore.append(col_name)
             
             modifications = {
                 "targets": new_targets,
                 "features": new_features,
+                "locations": new_locations,
                 "ignore": new_ignore
             }
             
@@ -250,7 +257,7 @@ def _render_encoding_phase(service: WorkflowService, result: Dict[str, Any]) -> 
             "Notes": st.column_config.TextColumn("Notes")
         },
         hide_index=True,
-        use_container_width=True,
+        width='stretch',
         num_rows="dynamic"
     )
     
@@ -379,7 +386,7 @@ def _render_configuration_phase(service: WorkflowService, result: Dict[str, Any]
             "Reasoning": st.column_config.TextColumn("Reasoning")
         },
         hide_index=True,
-        use_container_width=True,
+        width='stretch',
         num_rows="dynamic"
     )
     
@@ -401,6 +408,32 @@ def _render_configuration_phase(service: WorkflowService, result: Dict[str, Any]
             )
         }
     )
+    
+    # Location Settings (if location columns exist)
+    location_columns = service.workflow.current_state.get("location_columns", []) if service.workflow else []
+    if location_columns:
+        st.markdown("**Location Proximity Settings:**")
+        st.info(f"Detected location columns: {', '.join(location_columns)}")
+        
+        # Get current location settings from state or default
+        current_location_settings = service.workflow.current_state.get("location_settings", {}) if service.workflow else {}
+        current_max_dist = current_location_settings.get("max_distance_km", 50)
+        current_max_dist = int(current_max_dist) if current_max_dist else 50
+        
+        max_distance_km = st.slider(
+            "Max Distance (km) for Proximity Matching",
+            min_value=0,
+            max_value=200,
+            value=current_max_dist,
+            step=5,
+            help="Maximum distance in km to consider a candidate 'local' to a target city.",
+            key="workflow_max_distance_km"
+        )
+        
+        # Store in session state for later use
+        st.session_state["workflow_location_settings"] = {"max_distance_km": max_distance_km}
+    else:
+        max_distance_km = 50  # Default if no location columns
     
     # Hyperparameters
     st.markdown("**Hyperparameters:**")
@@ -463,6 +496,13 @@ def _render_configuration_phase(service: WorkflowService, result: Dict[str, Any]
                         "verbose_eval": False
                     }
                 }
+                
+                # Update location settings if location columns exist
+                if location_columns and "workflow_location_settings" in st.session_state:
+                    final_config["location_settings"] = st.session_state["workflow_location_settings"]
+                    # Also update workflow state
+                    if service.workflow:
+                        service.workflow.current_state["location_settings"] = st.session_state["workflow_location_settings"]
                 
                 st.session_state["workflow_result"]["final_config"] = final_config
                 st.session_state["workflow_phase"] = "complete"
@@ -670,6 +710,8 @@ def render_location_settings_editor(config: Dict[str, Any]) -> Dict[str, Any]:
     
     loc_settings = config.get("location_settings", {})
     current_dist = loc_settings.get("max_distance_km", 50)
+    # Ensure all values are int type to avoid type mismatch
+    current_dist = int(current_dist) if current_dist else 50
     
     new_dist = st.slider(
         "Max Distance (km) for Proximity Matching",
@@ -688,7 +730,7 @@ def render_model_config_editor(config: Dict[str, Any]) -> Dict[str, Any]:
     st.subheader("Model Configuration")
     
     model_config = config.get("model", {})
-
+    
     st.markdown("**Model Variables (Features & Targets)**")
     
     defaults_targets = ["BaseSalary", "Stock", "Bonus", "TotalComp"]
@@ -873,15 +915,15 @@ def render_config_ui(config: Dict[str, Any]) -> Dict[str, Any]:
             
             if result:
                 st.session_state["config_override"] = result
-    
+
     st.markdown("---")
     
     # --- Manual Config Editor ---
     st.subheader("Manual Configuration Editor")
     st.write("Edit configuration directly or refine AI-generated settings.")
-    
+
     if "config_override" in st.session_state:
-        config = st.session_state["config_override"]
+         config = st.session_state["config_override"]
     
     new_config = copy.deepcopy(config)
     
