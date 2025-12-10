@@ -1,31 +1,4 @@
-"""
-Agents module for LangGraph-based agentic workflow.
-
-This module provides a multi-step AI-powered configuration generation workflow:
-
-1. Column Classification Agent: Identifies targets, features, and columns to ignore
-2. Feature Encoding Agent: Determines encoding strategies for categorical features
-3. Model Configurator Agent: Proposes hyperparameters and constraints
-
-The workflow supports human-in-the-loop confirmation at each phase.
-
-Usage:
-    from src.agents.workflow import ConfigWorkflow
-    from src.llm.client import get_langchain_llm
-    
-    llm = get_langchain_llm("openai")
-    workflow = ConfigWorkflow(llm)
-    
-    # Start workflow
-    state = workflow.start(df_json, columns, dtypes, dataset_size)
-    
-    # Confirm phases
-    state = workflow.confirm_classification()
-    state = workflow.confirm_encoding()
-    
-    # Get final config
-    config = workflow.get_final_config()
-"""
+"""Agents module for LangGraph-based agentic workflow providing multi-step AI-powered configuration generation with column classification, feature encoding, and model configuration agents with human-in-the-loop confirmation."""
 
 from src.agents.tools import (
     compute_correlation_matrix,

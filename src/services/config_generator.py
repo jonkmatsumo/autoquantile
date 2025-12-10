@@ -1,12 +1,4 @@
-"""
-Configuration Generator Service.
-
-This service provides heuristic-based configuration generation.
-For AI-powered configuration, use the WorkflowService directly through the UI.
-
-Note: The previous LLM-based generation has been replaced with a multi-step
-agentic workflow available through the Streamlit UI's Configuration Wizard.
-"""
+"""Configuration generator service providing heuristic-based configuration generation. For AI-powered configuration, use WorkflowService through the Streamlit UI's Configuration Wizard."""
 
 import pandas as pd
 import re
@@ -15,27 +7,13 @@ from src.utils.logger import get_logger
 
 
 class ConfigGenerator:
-    """Service to generate configuration from data using heuristics.
-    
-    For AI-powered configuration generation, use the WorkflowService
-    through the Streamlit UI's Configuration Wizard instead.
-    """
+    """Service to generate configuration from data using heuristics. For AI-powered configuration, use WorkflowService through the Streamlit UI's Configuration Wizard."""
     
     def __init__(self):
         self.logger = get_logger(__name__)
 
     def infer_levels(self, df: pd.DataFrame, level_col: str = "Level") -> Dict[str, int]:
-        """Infers level ranking based on heuristics.
-        
-        Extracts numeric patterns from level strings to determine ordering.
-        
-        Args:
-            df: Input DataFrame.
-            level_col: Name of the level column.
-            
-        Returns:
-            Dictionary mapping level names to rank integers.
-        """
+        """Infers level ranking based on heuristics by extracting numeric patterns from level strings. Args: df (pd.DataFrame): Input DataFrame. level_col (str): Name of the level column. Returns: Dict[str, int]: Dictionary mapping level names to rank integers."""
         if level_col not in df.columns:
             return {}
             
@@ -74,19 +52,10 @@ class ConfigGenerator:
         return targets
     
     def infer_features(self, df: pd.DataFrame, exclude_cols: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-        """Infer likely feature columns with basic constraints.
-        
-        Args:
-            df: Input DataFrame.
-            exclude_cols: Columns to exclude (e.g., targets).
-            
-        Returns:
-            List of feature configurations.
-        """
+        """Infers likely feature columns with basic constraints. Args: df (pd.DataFrame): Input DataFrame. exclude_cols (Optional[List[str]]): Columns to exclude. Returns: List[Dict[str, Any]]: List of feature configurations."""
         exclude_cols = exclude_cols or []
         exclude_set = set(exclude_cols)
         
-        # Keywords for ID columns to ignore
         id_keywords = ['id', 'key', 'index', 'uuid', 'guid']
         
         features = []
@@ -97,14 +66,12 @@ class ConfigGenerator:
                 
             col_lower = col.lower()
             
-            # Skip likely ID columns
             if any(kw in col_lower for kw in id_keywords):
                 continue
             
-            # Determine monotone constraint heuristically
             constraint = 0
             if 'year' in col_lower or 'experience' in col_lower or 'age' in col_lower:
-                constraint = 1  # Likely positive correlation
+                constraint = 1
             elif 'level' in col_lower or 'rank' in col_lower or 'grade' in col_lower:
                 constraint = 1
             
@@ -140,14 +107,7 @@ class ConfigGenerator:
     }
 
     def generate_config_template(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Generates a template config using heuristics.
-        
-        Args:
-            df: Input DataFrame.
-            
-        Returns:
-            Configuration dictionary.
-        """
+        """Generates a template config using heuristics. Args: df (pd.DataFrame): Input DataFrame. Returns: Dict[str, Any]: Configuration dictionary."""
         levels = self.infer_levels(df)
         locations = self.infer_locations(df)
         targets = self.infer_targets(df)
@@ -180,22 +140,7 @@ class ConfigGenerator:
         return config
 
     def generate_config(self, df: pd.DataFrame, use_llm: bool = False, provider: str = "openai", preset: str = "none") -> Dict[str, Any]:
-        """
-        Generates configuration from dataframe using heuristics.
-        
-        Note: For AI-powered configuration, use the WorkflowService through
-        the Streamlit UI's Configuration Wizard. The use_llm parameter is
-        deprecated and will be ignored.
-        
-        Args:
-            df: Input data.
-            use_llm: Deprecated - use WorkflowService for AI-powered config.
-            provider: Deprecated - use WorkflowService for AI-powered config.
-            preset: Deprecated - use WorkflowService for AI-powered config.
-            
-        Returns:
-            Configuration dictionary.
-        """
+        """Generates configuration from dataframe using heuristics. Note: For AI-powered configuration, use WorkflowService through the Streamlit UI's Configuration Wizard. The use_llm parameter is deprecated. Args: df (pd.DataFrame): Input data. use_llm (bool): Deprecated - use WorkflowService for AI-powered config. provider (str): Deprecated - use WorkflowService for AI-powered config. preset (str): Deprecated - use WorkflowService for AI-powered config. Returns: Dict[str, Any]: Configuration dictionary."""
         if use_llm:
             self.logger.warning(
                 "The use_llm parameter is deprecated. For AI-powered configuration, "

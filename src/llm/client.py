@@ -1,9 +1,4 @@
-"""
-LLM Client module.
-
-Provides both legacy LLM clients and LangChain-compatible wrappers
-for use with the agentic workflow.
-"""
+"""LLM client module providing both legacy LLM clients and LangChain-compatible wrappers for use with the agentic workflow."""
 
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
@@ -79,16 +74,7 @@ class DebugClient(LLMClient):
 
 
 def get_llm_client(provider: str = "openai") -> LLMClient:
-    """Get a legacy LLM client. Args: provider (str): Provider name. Returns: LLMClient: LLM client instance."""
-    """
-    Get a legacy LLM client instance.
-    
-    Args:
-        provider: Provider name ("openai", "gemini", or "debug").
-        
-    Returns:
-        LLMClient instance.
-    """
+    """Gets a legacy LLM client instance. Args: provider (str): Provider name ("openai", "gemini", or "debug"). Returns: LLMClient: LLMClient instance."""
     if provider.lower() == "openai":
         return OpenAIClient()
     elif provider.lower() == "gemini":

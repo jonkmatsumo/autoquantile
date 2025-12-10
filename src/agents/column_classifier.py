@@ -1,11 +1,4 @@
-"""
-Column Classification Agent.
-
-This agent analyzes a dataset and classifies each column as:
-- Target: columns to be predicted
-- Feature: columns to use as predictors
-- Ignore: columns to exclude from modeling
-"""
+"""Column classification agent that analyzes datasets and classifies columns as targets, features, or ignore."""
 
 import json
 from typing import Any, Dict, List, Optional
@@ -82,7 +75,6 @@ def parse_classification_response(response_content: str) -> Dict[str, Any]:
             logger.debug("Found ``` block (non-json)")
             json_str = response_content.split("```")[1].split("```")[0].strip()
         else:
-            # Try to parse the whole response as JSON
             logger.debug("No code blocks found, attempting to parse entire response as JSON")
             json_str = response_content.strip()
         
@@ -95,7 +87,6 @@ def parse_classification_response(response_content: str) -> Dict[str, Any]:
         result = json.loads(json_str)
         logger.debug(f"Successfully parsed JSON, keys: {list(result.keys()) if isinstance(result, dict) else 'not a dict'}")
         
-        # Validate required keys
         if "targets" not in result:
             result["targets"] = []
         if "features" not in result:
@@ -107,12 +98,10 @@ def parse_classification_response(response_content: str) -> Dict[str, Any]:
         if "reasoning" not in result:
             result["reasoning"] = "No reasoning provided"
         
-        # Backward compatibility: if "locations" exists, migrate to column_types
         if "locations" in result and result["locations"]:
             for loc_col in result["locations"]:
                 if loc_col not in result["column_types"]:
                     result["column_types"][loc_col] = "location"
-            # Remove locations key after migration
             if "locations" in result:
                 del result["locations"]
             

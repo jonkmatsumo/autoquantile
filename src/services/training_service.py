@@ -94,7 +94,6 @@ class TrainingService:
                     self._jobs[job_id]["logs"].append(msg)
                     if data:
                         self._jobs[job_id]["history"].append(data)
-                        # Log CV scores as metrics if available
                         if data.get("stage") == "cv_end":
                             score = data.get("best_score")
                             self._jobs[job_id]["scores"].append(score)
@@ -120,7 +119,6 @@ class TrainingService:
             
             with mlflow.start_run(run_name=run_name) as run:
                 
-                # Log Tags for UI Filtering/Display
                 mlflow.set_tags({
                     "model_type": "XGBoost",
                     "dataset_name": dataset_name,

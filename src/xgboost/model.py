@@ -43,7 +43,6 @@ class QuantileForecaster:
         for col in fe_config.get("proximity_cols", []):
             self.proximity_encoders[col] = ProximityEncoder()
 
-        # Initialize optional encodings
         optional_encodings = config.get("optional_encodings", {})
         self.date_weight_col: Optional[str] = None
         
@@ -58,12 +57,10 @@ class QuantileForecaster:
             elif enc_type == "least_recent":
                 self.optional_encoders[col] = DateNormalizer(mode="least_recent")
             elif enc_type == "weight_recent":
-                # Store column name for sample weighting
                 self.date_weight_col = col
 
         k = model_config.get("sample_weight_k", 1.0)
         date_col = model_config.get("date_col", "Date")
-        # Use date_weight_col if specified, otherwise fall back to date_col
         weight_date_col = self.date_weight_col if self.date_weight_col else date_col
         self.weighter = SampleWeighter(k=k, date_col=weight_date_col)
         
@@ -71,14 +68,7 @@ class QuantileForecaster:
         self.feature_names: List[str] = [f["name"] for f in self.features_config]
         
     def _preprocess(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Preprocess input data.
-        
-        Args:
-            X: Input data.
-            
-        Returns:
-            Preprocessed data.
-        """
+        """Preprocesses input data. Args: X (pd.DataFrame): Input data. Returns: pd.DataFrame: Preprocessed data."""
         X_proc = X.copy()
         
         for col, encoder in self.ranked_encoders.items():
@@ -89,15 +79,12 @@ class QuantileForecaster:
             if col in X_proc.columns:
                 X_proc[f"{col}_Enc"] = encoder.transform(X_proc[col])
         
-        # Apply optional encodings
         optional_feature_names = []
         for col, encoder in self.optional_encoders.items():
             if col in X_proc.columns:
-                # Fit encoder on first call if it's a DateNormalizer
                 if isinstance(encoder, DateNormalizer) and encoder.min_date is None:
                     encoder.fit(X_proc[col])
                 
-                # Generate feature name based on encoding type
                 if isinstance(encoder, CostOfLivingEncoder):
                     feature_name = f"{col}_CostOfLiving"
                 elif isinstance(encoder, MetroPopulationEncoder):
@@ -116,21 +103,11 @@ class QuantileForecaster:
                  if f in X.columns:
                      X_proc[f] = X[f]
 
-        # Include both configured features and optional encoding features
         all_feature_names = list(self.feature_names) + [f for f in optional_feature_names if f not in self.feature_names]
         return X_proc[all_feature_names]
 
     def remove_outliers(self, df: pd.DataFrame, method: str = "iqr", threshold: float = 1.5) -> Tuple[pd.DataFrame, int]:
-        """Remove outliers from the dataframe based on target columns.
-        
-        Args:
-            df: Input data.
-            method: Outlier method.
-            threshold: IQR multiplier.
-            
-        Returns:
-            Tuple of filtered dataframe and number of rows removed.
-        """
+        """Removes outliers from the dataframe based on target columns. Args: df (pd.DataFrame): Input data. method (str): Outlier method. threshold (float): IQR multiplier. Returns: Tuple[pd.DataFrame, int]: Tuple of filtered dataframe and number of rows removed."""
         if method != "iqr":
             raise NotImplementedError("Only IQR method is currently supported.")
             
@@ -157,13 +134,7 @@ class QuantileForecaster:
         return df_clean, removed_count
 
     def train(self, df: pd.DataFrame, callback: Optional[Callable[[str, Optional[Dict[str, Any]]], None]] = None, remove_outliers: bool = False) -> None:
-        """Trains the XGBoost models.
-        
-        Args:
-            df (pd.DataFrame): Training data.
-            callback (Optional[Callable]): Optional callback for status updates.
-            remove_outliers (bool): If True, applies IQR outlier removal before training.
-        """
+        """Trains the XGBoost models. Args: df (pd.DataFrame): Training data. callback (Optional[Callable]): Optional callback for status updates. remove_outliers (bool): If True, applies IQR outlier removal before training. Returns: None."""
         if remove_outliers:
             if callback:
                 callback("Preprocessing: Removing outliers...", {"stage": "preprocess"})
@@ -250,18 +221,7 @@ class QuantileForecaster:
                 self.models[model_name] = model
 
     def tune(self, df: pd.DataFrame, n_trials: int = 20, timeout: Optional[int] = None) -> Dict[str, Any]:
-        """Runs Optuna optimization to find best hyperparameters.
-        
-        Updates self.model_config with the best parameters found.
-        
-        Args:
-            df (pd.DataFrame): Training data.
-            n_trials (int): Number of trials. Defaults to 20.
-            timeout (Optional[int]): Timeout in seconds.
-            
-        Returns:
-            Dict[str, Any]: Best parameters found.
-        """
+        """Runs Optuna optimization to find best hyperparameters and updates self.model_config. Args: df (pd.DataFrame): Training data. n_trials (int): Number of trials. timeout (Optional[int]): Timeout in seconds. Returns: Dict[str, Any]: Best parameters found."""
         optuna.logging.set_verbosity(optuna.logging.WARNING)
         
         X = self._preprocess(df)
@@ -317,14 +277,7 @@ class QuantileForecaster:
         return best_params
                 
     def predict(self, X_input: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
-        """Generates predictions for input data.
-
-        Args:
-            X_input (pd.DataFrame): Input data with features matching training columns.
-
-        Returns:
-            Dict[str, Dict[str, Any]]: A nested dictionary: {target: {quantile_key: predictions}}.
-        """
+        """Generates predictions for input data. Args: X_input (pd.DataFrame): Input data with features matching training columns. Returns: Dict[str, Dict[str, Any]]: A nested dictionary: {target: {quantile_key: predictions}}."""
         X_proc = self._preprocess(X_input)
         dtest = xgb.DMatrix(X_proc)
         
@@ -342,15 +295,7 @@ class QuantileForecaster:
     
     @staticmethod
     def _analyze_cv_results(cv_results: pd.DataFrame, metric_name: str = 'test-quantile-mean') -> Tuple[int, float]:
-        """Analyzes cross-validation results to find optimal rounds and best score.
-
-        Args:
-            cv_results (pd.DataFrame): XGBoost CV results dataframe.
-            metric_name (str): Name of the metric to analyze. Defaults to 'test-quantile-mean'.
-
-        Returns:
-            Tuple[int, float]: Best round (1-based) and best score.
-        """
+        """Analyzes cross-validation results to find optimal rounds and best score. Args: cv_results (pd.DataFrame): XGBoost CV results dataframe. metric_name (str): Name of the metric to analyze. Returns: Tuple[int, float]: Best round (1-based) and best score."""
         if metric_name not in cv_results.columns:
             raise ValueError(f"Metric {metric_name} not found in CV results columns: {cv_results.columns}")
             

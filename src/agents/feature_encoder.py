@@ -1,13 +1,4 @@
-"""
-Feature Encoding Agent.
-
-This agent analyzes feature columns and determines the best encoding strategy:
-- numeric: No encoding needed
-- ordinal: Ordered categorical encoding with mapping
-- onehot: One-hot encoding for nominal categories
-- proximity: Location-based encoding
-- label: Simple label encoding for moderate cardinality
-"""
+"""Feature encoding agent that analyzes feature columns and determines the best encoding strategy (numeric, ordinal, onehot, proximity, or label)."""
 
 import json
 from typing import Any, Dict, List, Optional
@@ -110,19 +101,7 @@ async def run_feature_encoder(
     dtypes: Dict[str, str],
     max_iterations: int = 15
 ) -> Dict[str, Any]:
-    """
-    Run the feature encoding agent.
-    
-    Args:
-        llm: LangChain chat model with tool-calling support.
-        df_json: JSON representation of DataFrame sample.
-        features: List of feature column names.
-        dtypes: Dict mapping column names to dtypes.
-        max_iterations: Maximum tool-calling iterations.
-        
-    Returns:
-        Encoding recommendations with encodings dict and summary.
-    """
+    """Runs the feature encoding agent. Args: llm (BaseChatModel): LangChain chat model with tool-calling support. df_json (str): JSON representation of DataFrame sample. features (List[str]): List of feature column names. dtypes (Dict[str, str]): Dict mapping column names to dtypes. max_iterations (int): Maximum tool-calling iterations. Returns: Dict[str, Any]: Encoding recommendations with encodings dict and summary."""
     if not features:
         return {
             "encodings": {},

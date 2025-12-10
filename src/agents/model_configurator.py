@@ -1,11 +1,4 @@
-"""
-Model Configuration Agent.
-
-This agent proposes model configuration including:
-- Monotonic constraints for features
-- Quantiles to predict
-- XGBoost hyperparameters
-"""
+"""Model configuration agent that proposes monotonic constraints, quantiles, and XGBoost hyperparameters."""
 
 import json
 from typing import Any, Dict, List, Optional
@@ -78,15 +71,7 @@ Provide your configuration as JSON with keys: features, quantiles, hyperparamete
 
 
 def parse_configuration_response(response_content: str) -> Dict[str, Any]:
-    """
-    Parse the agent's response to extract model configuration.
-    
-    Args:
-        response_content: Raw response text from the agent.
-        
-    Returns:
-        Parsed configuration dictionary.
-    """
+    """Parses the agent's response to extract model configuration. Args: response_content (str): Raw response text from the agent. Returns: Dict[str, Any]: Parsed configuration dictionary."""
     try:
         if "```json" in response_content:
             json_str = response_content.split("```json")[1].split("```")[0].strip()
@@ -149,23 +134,7 @@ async def run_model_configurator(
     column_stats: Optional[Dict[str, Any]] = None,
     dataset_size: int = 0
 ) -> Dict[str, Any]:
-    """
-    Run the model configuration agent.
-    
-    This agent doesn't need tools - it synthesizes information from
-    the previous agents to make configuration recommendations.
-    
-    Args:
-        llm: LangChain chat model.
-        targets: List of target column names.
-        encodings: Feature encoding recommendations.
-        correlation_data: Optional correlation JSON string.
-        column_stats: Optional column statistics.
-        dataset_size: Number of rows in dataset.
-        
-    Returns:
-        Model configuration with features, quantiles, hyperparameters.
-    """
+    """Runs the model configuration agent which synthesizes information from previous agents to make configuration recommendations. Args: llm (BaseChatModel): LangChain chat model. targets (List[str]): List of target column names. encodings (Dict[str, Any]): Feature encoding recommendations. correlation_data (Optional[str]): Optional correlation JSON string. column_stats (Optional[Dict[str, Any]]): Optional column statistics. dataset_size (int): Number of rows in dataset. Returns: Dict[str, Any]: Model configuration with features, quantiles, hyperparameters."""
     system_prompt = load_prompt("agents/model_configurator_system")
     user_prompt = build_configuration_prompt(
         targets, encodings, correlation_data, column_stats, dataset_size
@@ -189,9 +158,7 @@ def run_model_configurator_sync(
     dataset_size: int = 0,
     preset: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Synchronous model configurator. Args: llm (BaseChatModel): LangChain chat model. targets (List[str]): Target column names. encodings (Dict[str, Any]): Feature encoding recommendations. correlation_data (Optional[str]): Correlation JSON. column_stats (Optional[Dict[str, Any]]): Column statistics. dataset_size (int): Number of rows. preset (Optional[str]): Optional preset prompt name. Returns:
-        Model configuration with features, quantiles, hyperparameters.
-    """
+    """Synchronous model configurator. Args: llm (BaseChatModel): LangChain chat model. targets (List[str]): Target column names. encodings (Dict[str, Any]): Feature encoding recommendations. correlation_data (Optional[str]): Correlation JSON. column_stats (Optional[Dict[str, Any]]): Column statistics. dataset_size (int): Number of rows. preset (Optional[str]): Optional preset prompt name. Returns: Dict[str, Any]: Model configuration with features, quantiles, hyperparameters."""
     system_prompt = load_prompt("agents/model_configurator_system")
     
     if preset and preset.lower() != "none":

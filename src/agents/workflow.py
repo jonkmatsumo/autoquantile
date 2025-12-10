@@ -1,14 +1,4 @@
-"""
-LangGraph Workflow for Configuration Generation.
-
-This module defines the state graph that connects the three agents:
-1. Column Classifier -> User Confirmation
-2. Feature Encoder -> User Confirmation  
-3. Model Configurator -> Final Config
-
-Human-in-the-loop checkpoints allow users to review and modify
-agent outputs before proceeding to the next phase.
-"""
+"""LangGraph workflow connecting column classifier, feature encoder, and model configurator agents with human-in-the-loop checkpoints."""
 
 from typing import Any, Dict, List, Optional, TypedDict, Literal
 from langgraph.graph import StateGraph, END
@@ -30,15 +20,7 @@ class PromptInjectionError(Exception):
     """Exception raised when prompt injection is detected in user input."""
     
     def __init__(self, message: str, confidence: float, reasoning: str, suspicious_content: str):
-        """
-        Initialize the error.
-        
-        Args:
-            message: Error message.
-            confidence: Detection confidence level.
-            reasoning: Explanation of the detection.
-            suspicious_content: Content that triggered the detection.
-        """
+        """Initialize the error. Args: message (str): Error message. confidence (float): Detection confidence level. reasoning (str): Explanation of the detection. suspicious_content (str): Content that triggered the detection."""
         super().__init__(message)
         self.confidence = confidence
         self.reasoning = reasoning
@@ -47,54 +29,29 @@ class PromptInjectionError(Exception):
 
 class WorkflowState(TypedDict, total=False):
     """State schema for the configuration workflow."""
-    # Input data
     df_json: str
     columns: List[str]
     dtypes: Dict[str, str]
     dataset_size: int
-    preset: Optional[str]  # Optional preset prompt name (e.g., "salary")
-    
-    # Phase 1: Column Classification
+    preset: Optional[str]
     column_classification: Dict[str, Any]
     classification_confirmed: bool
-    location_columns: List[str]  # Extracted location columns from column_types
-    column_types: Dict[str, str]  # Semantic types (e.g., {"Location": "location", "Date": "datetime"})
-    optional_encodings: Dict[str, Dict[str, Any]]  # Optional encoding selections per column
-    
-    # Phase 2: Feature Encoding
+    location_columns: List[str]
+    column_types: Dict[str, str]
+    optional_encodings: Dict[str, Dict[str, Any]]
     feature_encodings: Dict[str, Any]
     encodings_confirmed: bool
-    
-    # Phase 3: Model Configuration
     model_config: Dict[str, Any]
-    location_settings: Dict[str, Any]  # max_distance_km setting
-    
-    # Computed data for later phases
+    location_settings: Dict[str, Any]
     correlation_data: Optional[str]
-    
-    # Final output
     final_config: Dict[str, Any]
-    
-    # Workflow metadata
     current_phase: str
-    current_node: Optional[str]  # Current LangGraph node being executed
+    current_node: Optional[str]
     error: Optional[str]
 
 
 def validate_input_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str, Any]:
-    """
-    Node that validates user input for prompt injection attacks.
-    
-    Args:
-        state: Current workflow state.
-        llm: Language model for detection.
-        
-    Returns:
-        Empty dict if validation passes (no state change).
-        
-    Raises:
-        PromptInjectionError: If prompt injection is detected.
-    """
+    """Validates user input for prompt injection attacks. Args: state (WorkflowState): Current workflow state. llm (BaseChatModel): Language model for detection. Returns: Dict[str, Any]: Empty dict if validation passes. Raises: PromptInjectionError: If prompt injection is detected."""
     logger.info("Validating input for prompt injection...")
     log_workflow_state_transition("validate_input_before", state)
     
@@ -142,16 +99,7 @@ def validate_input_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str, A
 
 
 def classify_columns_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str, Any]:
-    """
-    Node that runs the column classification agent.
-    
-    Args:
-        state: Current workflow state.
-        llm: Language model for the agent.
-        
-    Returns:
-        State updates with classification results.
-    """
+    """Runs the column classification agent. Args: state (WorkflowState): Current workflow state. llm (BaseChatModel): Language model for the agent. Returns: Dict[str, Any]: State updates with classification results."""
     logger.info("Running column classification agent...")
     log_workflow_state_transition("classify_columns_before", state)
     
@@ -172,18 +120,16 @@ def classify_columns_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str,
         logger.info("run_column_classifier_sync completed successfully")
         logger.debug(f"Classification result keys: {list(result.keys()) if isinstance(result, dict) else 'not a dict'}")
         
-        # Extract location columns from column_types
         column_types = result.get("column_types", {})
         location_columns = [col for col, col_type in column_types.items() if col_type == "location"]
         logger.debug(f"Detected location columns: {location_columns}")
         
-        # Compute correlations for later use
         correlation_data = None
         try:
             logger.debug("Computing correlation matrix...")
             correlation_data = compute_correlation_matrix.invoke({
                 "df_json": state["df_json"],
-                "columns": None  # All numeric columns
+                "columns": None
             })
             logger.debug(f"Correlation data computed (length: {len(correlation_data) if correlation_data else 0})")
         except Exception as e:
@@ -219,16 +165,7 @@ def classify_columns_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str,
 
 
 def encode_features_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str, Any]:
-    """
-    Node that runs the feature encoding agent.
-    
-    Args:
-        state: Current workflow state.
-        llm: Language model for the agent.
-        
-    Returns:
-        State updates with encoding recommendations.
-    """
+    """Runs the feature encoding agent. Args: state (WorkflowState): Current workflow state. llm (BaseChatModel): Language model for the agent. Returns: Dict[str, Any]: State updates with encoding recommendations."""
     logger.info("Running feature encoding agent...")
     log_workflow_state_transition("encode_features_before", state)
     
@@ -245,17 +182,14 @@ def encode_features_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str, 
             preset=state.get("preset")
         )
         
-        # Automatically set proximity encoding for location columns
         if location_columns and "encodings" in result:
             for loc_col in location_columns:
                 if loc_col in result["encodings"]:
-                    # Override with proximity encoding
                     result["encodings"][loc_col] = {
                         "type": "proximity",
                         "reasoning": "Location column detected in classification phase"
                     }
                 else:
-                    # Add if not already present
                     result["encodings"][loc_col] = {
                         "type": "proximity",
                         "reasoning": "Location column detected in classification phase"
@@ -286,16 +220,7 @@ def encode_features_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str, 
 
 
 def configure_model_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str, Any]:
-    """
-    Node that runs the model configuration agent.
-    
-    Args:
-        state: Current workflow state.
-        llm: Language model for the agent.
-        
-    Returns:
-        State updates with model configuration.
-    """
+    """Runs the model configuration agent. Args: state (WorkflowState): Current workflow state. llm (BaseChatModel): Language model for the agent. Returns: Dict[str, Any]: State updates with model configuration."""
     logger.info("Running model configuration agent...")
     log_workflow_state_transition("configure_model_before", state)
     
@@ -336,15 +261,7 @@ def configure_model_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str, 
 
 
 def build_final_config_node(state: WorkflowState) -> Dict[str, Any]:
-    """
-    Node that assembles the final configuration from all agent outputs.
-    
-    Args:
-        state: Current workflow state.
-        
-    Returns:
-        State updates with final configuration.
-    """
+    """Assembles the final configuration from all agent outputs. Args: state (WorkflowState): Current workflow state. Returns: Dict[str, Any]: State updates with final configuration."""
     logger.info("Building final configuration...")
     
     classification = state.get("column_classification", {})
@@ -353,10 +270,9 @@ def build_final_config_node(state: WorkflowState) -> Dict[str, Any]:
     location_columns = state.get("location_columns", [])
     location_settings = state.get("location_settings", {"max_distance_km": 50})
     
-    # Build mappings from encodings
     mappings = {
         "levels": {},
-        "location_targets": {}  # Empty initially, user can populate later
+        "location_targets": {}
     }
     
     feature_engineering = {
@@ -364,12 +280,10 @@ def build_final_config_node(state: WorkflowState) -> Dict[str, Any]:
         "proximity_cols": []
     }
     
-    # Process encodings
     for col, enc_config in encodings.get("encodings", {}).items():
         enc_type = enc_config.get("type", "")
         
         if enc_type == "ordinal" and "mapping" in enc_config:
-            # Create a mapping key for this column
             mapping_key = f"{col.lower()}_mapping"
             mappings[mapping_key] = enc_config["mapping"]
             feature_engineering["ranked_cols"][col] = mapping_key
@@ -377,15 +291,11 @@ def build_final_config_node(state: WorkflowState) -> Dict[str, Any]:
         elif enc_type == "proximity":
             feature_engineering["proximity_cols"].append(col)
     
-    # Also add location columns from classification (in case they weren't in encodings)
     for loc_col in location_columns:
         if loc_col not in feature_engineering["proximity_cols"]:
             feature_engineering["proximity_cols"].append(loc_col)
     
-    # Get optional encodings from state
     optional_encodings = state.get("optional_encodings", {})
-    
-    # Build final config structure
     final_config = {
         "mappings": mappings,
         "feature_engineering": feature_engineering,
@@ -430,40 +340,20 @@ def should_continue_after_encoding(state: WorkflowState) -> Literal["configure_m
 
 
 def create_workflow_graph(llm: BaseChatModel) -> StateGraph:
-    """
-    Create the LangGraph workflow for configuration generation.
-    
-    The workflow has validation and three main phases with human-in-the-loop checkpoints:
-    1. validate_input -> 
-    2. classify_columns -> (await confirmation) -> 
-    3. encode_features -> (await confirmation) ->
-    4. configure_model -> build_final_config -> END
-    
-    Args:
-        llm: Language model to use for agents.
-        
-    Returns:
-        Compiled StateGraph ready for execution.
-    """
-    # Create the graph
+    """Creates the LangGraph workflow for configuration generation with validation and three main phases with human-in-the-loop checkpoints. Args: llm (BaseChatModel): Language model to use for agents. Returns: StateGraph: Compiled StateGraph ready for execution."""
     workflow = StateGraph(WorkflowState)
     
-    # Define nodes with llm bound
     workflow.add_node("validate_input", lambda state: validate_input_node(state, llm))
     workflow.add_node("classify_columns", lambda state: classify_columns_node(state, llm))
-    workflow.add_node("await_classification", lambda state: state)  # No-op, just a checkpoint
+    workflow.add_node("await_classification", lambda state: state)
     workflow.add_node("encode_features", lambda state: encode_features_node(state, llm))
-    workflow.add_node("await_encoding", lambda state: state)  # No-op, just a checkpoint
+    workflow.add_node("await_encoding", lambda state: state)
     workflow.add_node("configure_model", lambda state: configure_model_node(state, llm))
     workflow.add_node("build_final_config", build_final_config_node)
     
-    # Set entry point
     workflow.set_entry_point("validate_input")
     
-    # Add edge from validation to classification
     workflow.add_edge("validate_input", "classify_columns")
-    
-    # Add edges
     workflow.add_conditional_edges(
         "classify_columns",
         should_continue_after_classification,
@@ -478,7 +368,7 @@ def create_workflow_graph(llm: BaseChatModel) -> StateGraph:
         should_continue_after_classification,
         {
             "encode_features": "encode_features",
-            "await_classification": "await_classification"  # Stay here until confirmed
+            "await_classification": "await_classification"
         }
     )
     
@@ -496,7 +386,7 @@ def create_workflow_graph(llm: BaseChatModel) -> StateGraph:
         should_continue_after_encoding,
         {
             "configure_model": "configure_model",
-            "await_encoding": "await_encoding"  # Stay here until confirmed
+            "await_encoding": "await_encoding"
         }
     )
     
@@ -507,16 +397,7 @@ def create_workflow_graph(llm: BaseChatModel) -> StateGraph:
 
 
 def compile_workflow(llm: BaseChatModel, checkpointer: Optional[MemorySaver] = None):
-    """
-    Compile the workflow graph with optional checkpointing.
-    
-    Args:
-        llm: Language model to use for agents.
-        checkpointer: Optional memory saver for state persistence.
-        
-    Returns:
-        Compiled workflow ready for execution.
-    """
+    """Compiles the workflow graph with optional checkpointing. Args: llm (BaseChatModel): Language model to use for agents. checkpointer (Optional[MemorySaver]): Optional memory saver for state persistence. Returns: Compiled workflow ready for execution."""
     workflow = create_workflow_graph(llm)
     
     if checkpointer is None:
@@ -529,20 +410,10 @@ def compile_workflow(llm: BaseChatModel, checkpointer: Optional[MemorySaver] = N
 
 
 class ConfigWorkflow:
-    """
-    High-level wrapper for the configuration workflow.
-    
-    Provides methods to run the workflow step-by-step with
-    user confirmation between phases.
-    """
+    """High-level wrapper for the configuration workflow with step-by-step execution and user confirmation between phases."""
     
     def __init__(self, llm: BaseChatModel):
-        """
-        Initialize the workflow.
-        
-        Args:
-            llm: Language model to use for agents.
-        """
+        """Initializes the workflow. Args: llm (BaseChatModel): Language model to use for agents."""
         self.llm = llm
         self.checkpointer = MemorySaver()
         self.compiled = compile_workflow(llm, self.checkpointer)
@@ -550,21 +421,7 @@ class ConfigWorkflow:
         self.current_state = None
     
     def start(self, df_json: str, columns: List[str], dtypes: Dict[str, str], dataset_size: int, preset: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Start the workflow with initial data.
-        
-        Runs until the first checkpoint (after column classification).
-        
-        Args:
-            df_json: JSON representation of DataFrame sample.
-            columns: List of column names.
-            dtypes: Dict mapping column names to dtypes.
-            dataset_size: Number of rows in the dataset.
-            preset: Optional preset prompt name (e.g., "salary").
-            
-        Returns:
-            Current workflow state after classification.
-        """
+        """Starts the workflow with initial data, running until the first checkpoint after column classification. Args: df_json (str): JSON representation of DataFrame sample. columns (List[str]): List of column names. dtypes (Dict[str, str]): Dict mapping column names to dtypes. dataset_size (int): Number of rows in the dataset. preset (Optional[str]): Optional preset prompt name. Returns: Dict[str, Any]: Current workflow state after classification."""
         import uuid
         self.thread_id = str(uuid.uuid4())
         
@@ -583,11 +440,9 @@ class ConfigWorkflow:
         
         config = {"configurable": {"thread_id": self.thread_id}}
         
-        # Run until first interrupt
         for event in self.compiled.stream(initial_state, config):
             self.current_state = event
         
-        # Get latest state
         state_snapshot = self.compiled.get_state(config)
         self.current_state = dict(state_snapshot.values) if state_snapshot.values else {}
         
@@ -595,24 +450,14 @@ class ConfigWorkflow:
         return self.current_state
     
     def confirm_classification(self, modifications: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Confirm the column classification and proceed to encoding.
-        
-        Args:
-            modifications: Optional modifications to the classification.
-            
-        Returns:
-            Current workflow state after encoding.
-        """
+        """Confirms the column classification and proceeds to encoding. Args: modifications (Optional[Dict[str, Any]]): Optional modifications to the classification. Returns: Dict[str, Any]: Current workflow state after encoding."""
         if not self.thread_id:
             raise RuntimeError("Workflow not started")
         
         config = {"configurable": {"thread_id": self.thread_id}}
         
-        # Apply modifications if provided
         update_state = {"classification_confirmed": True}
         if modifications:
-            # Extract optional_encodings separately if present (copy to avoid mutating original)
             modifications_copy = modifications.copy()
             optional_encodings = modifications_copy.pop("optional_encodings", None)
             if optional_encodings is not None:
@@ -621,26 +466,21 @@ class ConfigWorkflow:
             current_classification = self.current_state.get("column_classification", {})
             current_classification.update(modifications_copy)
             update_state["column_classification"] = current_classification
-            # Extract location columns from column_types if present
             column_types = current_classification.get("column_types", {})
             if column_types:
                 location_columns = [col for col, col_type in column_types.items() if col_type == "location"]
                 update_state["location_columns"] = location_columns
                 update_state["column_types"] = column_types
-            # Backward compatibility: if locations key exists, migrate to column_types
             elif "locations" in modifications_copy:
                 location_columns = modifications_copy["locations"]
                 update_state["location_columns"] = location_columns
-                # Create column_types from locations
                 column_types = {col: "location" for col in location_columns}
                 update_state["column_types"] = column_types
                 current_classification["column_types"] = column_types
                 update_state["column_classification"] = current_classification
         
-        # Update state and resume
         self.compiled.update_state(config, update_state)
         
-        # Run until next interrupt
         for event in self.compiled.stream(None, config):
             self.current_state = event
         
@@ -651,35 +491,23 @@ class ConfigWorkflow:
         return self.current_state
     
     def confirm_encoding(self, modifications: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Confirm the feature encoding and proceed to model configuration.
-        
-        Args:
-            modifications: Optional modifications to the encodings.
-            
-        Returns:
-            Current workflow state with final config.
-        """
+        """Confirms the feature encoding and proceeds to model configuration. Args: modifications (Optional[Dict[str, Any]]): Optional modifications to the encodings. Returns: Dict[str, Any]: Current workflow state with final config."""
         if not self.thread_id:
             raise RuntimeError("Workflow not started")
         
         config = {"configurable": {"thread_id": self.thread_id}}
         
-        # Apply modifications if provided
         update_state = {"encodings_confirmed": True}
         if modifications:
             current_encodings = self.current_state.get("feature_encodings", {})
             if "encodings" in current_encodings:
                 current_encodings["encodings"].update(modifications.get("encodings", {}))
             update_state["feature_encodings"] = current_encodings
-            # Update optional encodings if provided
             if "optional_encodings" in modifications:
                 update_state["optional_encodings"] = modifications["optional_encodings"]
         
-        # Update state and resume
         self.compiled.update_state(config, update_state)
         
-        # Run to completion
         for event in self.compiled.stream(None, config):
             self.current_state = event
         

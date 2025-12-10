@@ -93,7 +93,6 @@ def train_workflow(csv_path: str, config_path: str, output_path: str, console: A
         
         mlflow.set_experiment(experiment_name)
         with mlflow.start_run() as run:
-            # Log Params
             mlflow.log_params({
                 "remove_outliers": remove_outliers,
                 "do_tune": do_tune,
@@ -101,9 +100,6 @@ def train_workflow(csv_path: str, config_path: str, output_path: str, console: A
                 "data_rows": len(df)
             })
             
-
-            
-            # Log Model
             wrapper = SalaryForecasterWrapper(forecaster)
             mlflow.pyfunc.log_model(
                 artifact_path="model",

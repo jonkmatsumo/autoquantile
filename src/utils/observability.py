@@ -1,11 +1,4 @@
-"""
-Observability utilities for logging LLM interactions and workflow state.
-
-This module provides structured logging functions for tracking:
-- LLM tool calls and results
-- Agent interactions and message history
-- Workflow state transitions
-"""
+"""Observability utilities for logging LLM interactions, tool calls, agent interactions, and workflow state transitions."""
 
 import json
 from typing import Any, Dict, List, Optional

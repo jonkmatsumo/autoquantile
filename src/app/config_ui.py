@@ -1,11 +1,4 @@
-"""
-Configuration UI for the Streamlit app.
-
-This module provides the UI for the multi-step agentic configuration workflow:
-1. Column Classification - Identify targets, features, and columns to ignore
-2. Feature Encoding - Determine how to encode categorical features
-3. Model Configuration - Configure hyperparameters and constraints
-"""
+"""Configuration UI for the Streamlit app providing the multi-step agentic configuration workflow with column classification, feature encoding, and model configuration."""
 
 import streamlit as st
 import pandas as pd

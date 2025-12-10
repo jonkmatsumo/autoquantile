@@ -1,12 +1,4 @@
-"""
-Legacy LLM Service for configuration generation.
-
-DEPRECATED: This module is deprecated in favor of the new agentic workflow.
-Use WorkflowService from src.services.workflow_service for AI-powered
-configuration generation through the multi-step wizard.
-
-This module is kept for backward compatibility only.
-"""
+"""Legacy LLM service for configuration generation. DEPRECATED: Use WorkflowService from src.services.workflow_service for AI-powered configuration generation. This module is kept for backward compatibility only."""
 
 import warnings
 import json
@@ -19,12 +11,7 @@ from src.model.config_schema_model import Config
 
 
 class LLMService:
-    """
-    Legacy LLM service for single-prompt configuration generation.
-    
-    DEPRECATED: Use WorkflowService for the new multi-step agentic workflow.
-    This class is kept for backward compatibility only.
-    """
+    """Legacy LLM service for single-prompt configuration generation. DEPRECATED: Use WorkflowService for the new multi-step agentic workflow. This class is kept for backward compatibility only."""
     
     def __init__(self, provider: str = "openai") -> None:
         warnings.warn(
@@ -42,15 +29,7 @@ class LLMService:
             self.client = None
 
     def generate_config(self, df: pd.DataFrame, preset: str = "none") -> Dict[str, Any]:
-        """Generate configuration from dataframe using LLM (DEPRECATED).
-        
-        Args:
-            df: Input dataframe.
-            preset: Preset name (e.g. 'salary', 'none').
-            
-        Returns:
-            Validated configuration dictionary.
-        """
+        """Generates configuration from dataframe using LLM (DEPRECATED). Args: df (pd.DataFrame): Input dataframe. preset (str): Preset name. Returns: Dict[str, Any]: Validated configuration dictionary."""
         if not self.client:
             raise RuntimeError("LLM Client not initialized. Check API keys.")
 

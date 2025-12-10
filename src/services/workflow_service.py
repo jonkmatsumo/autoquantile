@@ -1,9 +1,4 @@
-"""
-Workflow Service for orchestrating the agentic configuration generation.
-
-This service wraps the LangGraph workflow and provides a simple interface
-for the Streamlit UI to manage the multi-step configuration process.
-"""
+"""Workflow service that wraps the LangGraph workflow and provides a simple interface for the Streamlit UI to manage the multi-step configuration process."""
 
 import json
 from typing import Any, Dict, List, Optional
@@ -17,30 +12,15 @@ logger = get_logger(__name__)
 
 
 class WorkflowService:
-    """
-    Service to manage the agentic configuration workflow.
-    
-    This service provides methods to:
-    - Start a new workflow with a dataset
-    - Get current workflow state
-    - Confirm and modify phase outputs
-    - Retrieve the final configuration
-    """
+    """Service to manage the agentic configuration workflow with methods to start workflows, get state, confirm phases, and retrieve final configuration."""
     
     def __init__(self, provider: str = "openai", model: Optional[str] = None):
-        """
-        Initialize the workflow service.
-        
-        Args:
-            provider: LLM provider name ("openai" or "gemini").
-            model: Optional model name override.
-        """
+        """Initializes the workflow service. Args: provider (str): LLM provider name. model (Optional[str]): Optional model name override."""
         self.provider = provider
         self.model = model
         self.workflow: Optional[ConfigWorkflow] = None
         self.current_state: Dict[str, Any] = {}
         
-        # Initialize LLM
         try:
             self.llm = get_langchain_llm(provider=provider, model=model)
             logger.info(f"WorkflowService initialized with provider: {provider}")
@@ -95,7 +75,6 @@ class WorkflowService:
         logger.info(f"Prepared workflow input: {len(columns)} columns, {dataset_size} total rows")
         logger.debug(f"Column dtypes: {dtypes}")
         
-        # Create and start workflow
         try:
             self.workflow = ConfigWorkflow(self.llm)
             logger.debug("ConfigWorkflow instance created")

@@ -1,9 +1,4 @@
-"""
-Analysis tools for LangGraph agents.
-
-These tools are used by agents to explore and analyze data during the
-configuration generation workflow.
-"""
+"""Analysis tools for LangGraph agents used to explore and analyze data during the configuration generation workflow."""
 
 import re
 import json
@@ -45,7 +40,6 @@ def compute_correlation_matrix(df_json: str, columns: Optional[str] = None) -> s
     
     if columns:
         col_list = [c.strip() for c in columns.split(",")]
-        # Filter to only existing numeric columns
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         col_list = [c for c in col_list if c in numeric_cols]
     else:
@@ -56,7 +50,6 @@ def compute_correlation_matrix(df_json: str, columns: Optional[str] = None) -> s
     
     corr_matrix = df[col_list].corr()
     
-    # Convert to a more readable format
     correlations = []
     for i, col1 in enumerate(col_list):
         for col2 in col_list[i+1:]:
@@ -114,7 +107,6 @@ def get_column_statistics(df_json: str, column: str) -> str:
         "unique_count": int(col_data.nunique()),
     }
     
-    # Add numeric statistics if applicable (but not boolean)
     if pd.api.types.is_numeric_dtype(col_data) and not pd.api.types.is_bool_dtype(col_data):
         def safe_round(val):
             """Safely round values, handling numpy types."""
@@ -135,18 +127,15 @@ def get_column_statistics(df_json: str, column: str) -> str:
             "q75": safe_round(col_data.quantile(0.75)) if not col_data.isnull().all() else None,
         }
     elif pd.api.types.is_bool_dtype(col_data):
-        # For boolean columns, just provide counts
         stats["boolean_stats"] = {
             "true_count": int((col_data == True).sum()),
             "false_count": int((col_data == False).sum()),
             "null_count": int(col_data.isnull().sum())
         }
     
-    # Add sample values
     non_null = col_data.dropna()
     if len(non_null) > 0:
         sample_values = non_null.head(5).tolist()
-        # Convert numpy types to Python native types for JSON serialization
         stats["sample_values"] = [
             str(v) if not isinstance(v, (np.integer, np.floating, np.bool_)) 
             else str(int(v) if isinstance(v, np.bool_) else v)
