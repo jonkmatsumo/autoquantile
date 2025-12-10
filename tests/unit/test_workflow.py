@@ -30,6 +30,8 @@ class TestWorkflowState(unittest.TestCase):
             "columns": ["A"],
             "dtypes": {"A": "int64"},
             "dataset_size": 100,
+            "preset": None,
+            "optional_encodings": {},
             "column_classification": {},
             "classification_confirmed": False,
             "feature_encodings": {},
@@ -44,6 +46,39 @@ class TestWorkflowState(unittest.TestCase):
         self.assertIn("df_json", state)
         self.assertIn("columns", state)
         self.assertIn("current_phase", state)
+        self.assertIn("preset", state)
+        self.assertIn("optional_encodings", state)
+    
+    def test_state_with_preset(self):
+        """Test WorkflowState with preset."""
+        state: WorkflowState = {
+            "df_json": '{}',
+            "columns": ["A"],
+            "dtypes": {"A": "int64"},
+            "dataset_size": 100,
+            "preset": "salary",
+            "optional_encodings": {},
+            "current_phase": "starting"
+        }
+        
+        self.assertEqual(state["preset"], "salary")
+    
+    def test_state_with_optional_encodings(self):
+        """Test WorkflowState with optional_encodings."""
+        state: WorkflowState = {
+            "df_json": '{}',
+            "columns": ["A"],
+            "dtypes": {"A": "int64"},
+            "dataset_size": 100,
+            "preset": None,
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}}
+            },
+            "current_phase": "starting"
+        }
+        
+        self.assertIn("Location", state["optional_encodings"])
+        self.assertEqual(state["optional_encodings"]["Location"]["type"], "cost_of_living")
 
 
 class TestClassifyColumnsNode(unittest.TestCase):
@@ -66,7 +101,9 @@ class TestClassifyColumnsNode(unittest.TestCase):
             "df_json": '{"Salary": [100], "Level": ["L3"], "ID": [1]}',
             "columns": ["Salary", "Level", "ID"],
             "dtypes": {"Salary": "int64", "Level": "object", "ID": "int64"},
-            "dataset_size": 1
+            "dataset_size": 1,
+            "preset": None,
+            "optional_encodings": {}
         }
         
         result = classify_columns_node(state, mock_llm)
@@ -75,6 +112,8 @@ class TestClassifyColumnsNode(unittest.TestCase):
         self.assertFalse(result["classification_confirmed"])
         self.assertIn("column_classification", result)
         self.assertIsNone(result["error"])
+        # Verify optional_encodings is preserved
+        self.assertIn("optional_encodings", result)
     
     @patch("src.agents.workflow.run_column_classifier_sync")
     def test_classification_error_handling(self, mock_classifier):
@@ -116,6 +155,9 @@ class TestEncodeFeaturesNode(unittest.TestCase):
             "dtypes": {"Level": "object"},
             "column_classification": {
                 "features": ["Level"]
+            },
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}}
             }
         }
         
@@ -125,6 +167,9 @@ class TestEncodeFeaturesNode(unittest.TestCase):
         self.assertFalse(result["encodings_confirmed"])
         self.assertIn("feature_encodings", result)
         self.assertIsNone(result["error"])
+        # Verify optional_encodings is preserved
+        self.assertIn("optional_encodings", result)
+        self.assertEqual(result["optional_encodings"]["Location"]["type"], "cost_of_living")
     
     @patch("src.agents.workflow.run_feature_encoder_sync")
     def test_encoding_error_handling(self, mock_encoder):
@@ -163,7 +208,10 @@ class TestConfigureModelNode(unittest.TestCase):
             "column_classification": {"targets": ["Salary"]},
             "feature_encodings": {"encodings": {"Level": {"type": "ordinal"}}},
             "correlation_data": None,
-            "dataset_size": 100
+            "dataset_size": 100,
+            "optional_encodings": {
+                "Date": {"type": "normalize_recent", "params": {}}
+            }
         }
         
         result = configure_model_node(state, mock_llm)
@@ -171,6 +219,9 @@ class TestConfigureModelNode(unittest.TestCase):
         self.assertEqual(result["current_phase"], "configuration")
         self.assertIn("model_config", result)
         self.assertIsNone(result["error"])
+        # Verify optional_encodings is preserved
+        self.assertIn("optional_encodings", result)
+        self.assertEqual(result["optional_encodings"]["Date"]["type"], "normalize_recent")
     
     @patch("src.agents.workflow.run_model_configurator_sync")
     def test_configuration_error_handling(self, mock_configurator):
@@ -260,6 +311,52 @@ class TestBuildFinalConfigNode(unittest.TestCase):
         # Should create mapping for ordinal
         self.assertIn("mappings", final_config)
         self.assertIn("feature_engineering", final_config)
+    
+    def test_build_final_config_with_optional_encodings(self):
+        """Test building config with optional_encodings."""
+        state: WorkflowState = {
+            "column_classification": {"targets": ["Salary"]},
+            "feature_encodings": {"encodings": {}},
+            "model_config": {
+                "features": [],
+                "quantiles": [0.5],
+                "hyperparameters": {}
+            },
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}},
+                "Date": {"type": "normalize_recent", "params": {}}
+            }
+        }
+        
+        result = build_final_config_node(state)
+        
+        final_config = result["final_config"]
+        # Should include optional_encodings in final config
+        self.assertIn("optional_encodings", final_config)
+        self.assertIn("Location", final_config["optional_encodings"])
+        self.assertIn("Date", final_config["optional_encodings"])
+        self.assertEqual(final_config["optional_encodings"]["Location"]["type"], "cost_of_living")
+        self.assertEqual(final_config["optional_encodings"]["Date"]["type"], "normalize_recent")
+    
+    def test_build_final_config_without_optional_encodings(self):
+        """Test building config without optional_encodings (backward compatibility)."""
+        state: WorkflowState = {
+            "column_classification": {"targets": ["Salary"]},
+            "feature_encodings": {"encodings": {}},
+            "model_config": {
+                "features": [],
+                "quantiles": [0.5],
+                "hyperparameters": {}
+            }
+            # No optional_encodings field
+        }
+        
+        result = build_final_config_node(state)
+        
+        final_config = result["final_config"]
+        # Should still work, optional_encodings should be empty dict
+        self.assertIn("optional_encodings", final_config)
+        self.assertEqual(final_config["optional_encodings"], {})
 
 
 class TestConditionalEdges(unittest.TestCase):
@@ -389,6 +486,71 @@ class TestConfigWorkflow(unittest.TestCase):
         self.assertIn("column_classification", result)
     
     @patch("src.agents.workflow.compile_workflow")
+    def test_start_with_preset(self, mock_compile):
+        """Test start method with preset parameter."""
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_compiled = MagicMock()
+        
+        mock_compiled.stream.return_value = iter([
+            {"column_classification": {"targets": ["Salary"]}}
+        ])
+        mock_compiled.get_state.return_value = Mock(values={
+            "column_classification": {"targets": ["Salary"]},
+            "current_phase": "classification",
+            "preset": "salary"
+        })
+        
+        mock_compile.return_value = mock_compiled
+        
+        workflow = ConfigWorkflow(mock_llm)
+        workflow.compiled = mock_compiled
+        
+        df = pd.DataFrame({"Salary": [100]})
+        result = workflow.start(
+            df.to_json(),
+            ["Salary"],
+            {"Salary": "int64"},
+            1,
+            preset="salary"
+        )
+        
+        # Verify preset is in state
+        self.assertIn("preset", result)
+        self.assertEqual(result["preset"], "salary")
+    
+    @patch("src.agents.workflow.compile_workflow")
+    def test_start_with_optional_encodings_initialized(self, mock_compile):
+        """Test that optional_encodings is initialized in start."""
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_compiled = MagicMock()
+        
+        mock_compiled.stream.return_value = iter([
+            {"column_classification": {"targets": ["Salary"]}}
+        ])
+        mock_compiled.get_state.return_value = Mock(values={
+            "column_classification": {"targets": ["Salary"]},
+            "current_phase": "classification",
+            "optional_encodings": {}
+        })
+        
+        mock_compile.return_value = mock_compiled
+        
+        workflow = ConfigWorkflow(mock_llm)
+        workflow.compiled = mock_compiled
+        
+        df = pd.DataFrame({"Salary": [100]})
+        result = workflow.start(
+            df.to_json(),
+            ["Salary"],
+            {"Salary": "int64"},
+            1
+        )
+        
+        # Verify optional_encodings is initialized
+        self.assertIn("optional_encodings", result)
+        self.assertEqual(result["optional_encodings"], {})
+    
+    @patch("src.agents.workflow.compile_workflow")
     def test_confirm_classification(self, mock_compile):
         """Test confirm_classification method."""
         mock_llm = MagicMock(spec=BaseChatModel)
@@ -418,6 +580,46 @@ class TestConfigWorkflow(unittest.TestCase):
         mock_compiled.update_state.assert_called_once()
         # Result should be the state after encoding
         self.assertIn("current_phase", result)
+    
+    @patch("src.agents.workflow.compile_workflow")
+    def test_confirm_classification_with_optional_encodings(self, mock_compile):
+        """Test confirm_classification with optional_encodings modifications."""
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_compiled = MagicMock()
+        
+        final_state = {
+            "current_phase": "encoding",
+            "feature_encodings": {"encodings": {}},
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}}
+            }
+        }
+        
+        mock_compiled.get_state.return_value = Mock(values=final_state)
+        mock_compiled.stream.return_value = iter([final_state])
+        mock_compiled.update_state = MagicMock()
+        
+        mock_compile.return_value = mock_compiled
+        
+        workflow = ConfigWorkflow(mock_llm)
+        workflow.compiled = mock_compiled
+        workflow.thread_id = "test_thread"
+        workflow.current_state = {"column_classification": {}}
+        
+        modifications = {
+            "targets": ["Salary"],
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}}
+            }
+        }
+        
+        result = workflow.confirm_classification(modifications)
+        
+        # Verify update_state was called with optional_encodings
+        update_call = mock_compiled.update_state.call_args
+        update_state_dict = update_call[1] if update_call[1] else update_call[0][1]
+        self.assertIn("optional_encodings", update_state_dict)
+        self.assertEqual(update_state_dict["optional_encodings"]["Location"]["type"], "cost_of_living")
     
     @patch("src.agents.workflow.compile_workflow")
     def test_get_current_phase(self, mock_compile):
@@ -461,6 +663,46 @@ class TestConfigWorkflow(unittest.TestCase):
         config = workflow.get_final_config()
         
         self.assertIsNone(config)
+    
+    @patch("src.agents.workflow.compile_workflow")
+    def test_confirm_encoding_with_optional_encodings(self, mock_compile):
+        """Test confirm_encoding with optional_encodings modifications."""
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_compiled = MagicMock()
+        
+        final_state = {
+            "current_phase": "complete",
+            "final_config": {"model": {"targets": ["Salary"]}},
+            "optional_encodings": {
+                "Date": {"type": "normalize_recent", "params": {}}
+            }
+        }
+        
+        mock_compiled.get_state.return_value = Mock(values=final_state)
+        mock_compiled.stream.return_value = iter([final_state])
+        mock_compiled.update_state = MagicMock()
+        
+        mock_compile.return_value = mock_compiled
+        
+        workflow = ConfigWorkflow(mock_llm)
+        workflow.compiled = mock_compiled
+        workflow.thread_id = "test_thread"
+        workflow.current_state = {"feature_encodings": {"encodings": {}}}
+        
+        modifications = {
+            "encodings": {"Level": {"type": "ordinal"}},
+            "optional_encodings": {
+                "Date": {"type": "normalize_recent", "params": {}}
+            }
+        }
+        
+        result = workflow.confirm_encoding(modifications)
+        
+        # Verify update_state was called with optional_encodings
+        update_call = mock_compiled.update_state.call_args
+        update_state_dict = update_call[1] if update_call[1] else update_call[0][1]
+        self.assertIn("optional_encodings", update_state_dict)
+        self.assertEqual(update_state_dict["optional_encodings"]["Date"]["type"], "normalize_recent")
 
 
 if __name__ == "__main__":

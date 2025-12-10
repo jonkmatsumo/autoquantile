@@ -14,6 +14,7 @@ from src.agents.column_classifier import (
     parse_classification_response,
     run_column_classifier_sync,
 )
+from src.utils.prompt_loader import load_prompt
 
 
 class TestGetColumnClassifierTools(unittest.TestCase):
@@ -468,6 +469,111 @@ class TestColumnClassifierWithTools(unittest.TestCase):
         self.assertEqual(result["targets"], ["Salary"])
         self.assertEqual(result["features"], ["Level"])
         self.assertEqual(result["ignore"], ["ID"])
+
+
+class TestColumnClassifierPreset(unittest.TestCase):
+    """Tests for preset prompt loading in column classifier."""
+    
+    @patch("src.agents.column_classifier.load_prompt")
+    def test_preset_prompt_loaded(self, mock_load_prompt):
+        """Test that preset prompt is loaded and appended to system prompt."""
+        system_prompt = "System prompt"
+        preset_content = "**Domain Specific Instructions (Salary Forecasting):**\n1. Targets: Look for salary columns"
+        
+        mock_load_prompt.side_effect = lambda name: {
+            "agents/column_classifier_system": system_prompt,
+            "presets/salary": preset_content
+        }[name]
+        
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_response = AIMessage(content=json.dumps({
+            "targets": ["Salary"],
+            "features": [],
+            "ignore": [],
+            "reasoning": "Test"
+        }))
+        mock_response.tool_calls = []
+        
+        mock_agent = MagicMock()
+        mock_agent.invoke.return_value = mock_response
+        mock_llm.bind_tools.return_value = mock_agent
+        
+        df = pd.DataFrame({"Salary": [100000]})
+        result = run_column_classifier_sync(
+            mock_llm,
+            df.to_json(),
+            ["Salary"],
+            {"Salary": "int64"},
+            preset="salary"
+        )
+        
+        # Verify both system prompt and preset were loaded
+        self.assertEqual(mock_load_prompt.call_count, 2)
+        mock_load_prompt.assert_any_call("agents/column_classifier_system")
+        mock_load_prompt.assert_any_call("presets/salary")
+    
+    @patch("src.agents.column_classifier.load_prompt")
+    def test_preset_none_does_not_load(self, mock_load_prompt):
+        """Test that preset=None does not attempt to load preset."""
+        mock_load_prompt.return_value = "System prompt"
+        
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_response = AIMessage(content=json.dumps({
+            "targets": [],
+            "features": [],
+            "ignore": [],
+            "reasoning": "Test"
+        }))
+        mock_response.tool_calls = []
+        
+        mock_agent = MagicMock()
+        mock_agent.invoke.return_value = mock_response
+        mock_llm.bind_tools.return_value = mock_agent
+        
+        df = pd.DataFrame({"A": [1]})
+        result = run_column_classifier_sync(
+            mock_llm,
+            df.to_json(),
+            ["A"],
+            {"A": "int64"},
+            preset=None
+        )
+        
+        # Should only load system prompt, not preset
+        mock_load_prompt.assert_called_once_with("agents/column_classifier_system")
+    
+    @patch("src.agents.column_classifier.load_prompt")
+    def test_preset_invalid_handles_gracefully(self, mock_load_prompt):
+        """Test that invalid preset name is handled gracefully."""
+        mock_load_prompt.side_effect = lambda name: {
+            "agents/column_classifier_system": "System prompt"
+        }.get(name, FileNotFoundError(f"Prompt file not found: {name}"))
+        
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_response = AIMessage(content=json.dumps({
+            "targets": [],
+            "features": [],
+            "ignore": [],
+            "reasoning": "Test"
+        }))
+        mock_response.tool_calls = []
+        
+        mock_agent = MagicMock()
+        mock_agent.invoke.return_value = mock_response
+        mock_llm.bind_tools.return_value = mock_agent
+        
+        df = pd.DataFrame({"A": [1]})
+        # Should not raise exception, just log warning
+        result = run_column_classifier_sync(
+            mock_llm,
+            df.to_json(),
+            ["A"],
+            {"A": "int64"},
+            preset="invalid_preset"
+        )
+        
+        # Should still work
+        self.assertIn("targets", result)
 
 
 if __name__ == "__main__":

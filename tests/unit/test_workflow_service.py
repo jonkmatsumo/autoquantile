@@ -85,6 +85,162 @@ class TestWorkflowService(unittest.TestCase):
         self.assertEqual(result["status"], "success")
         self.assertIn("data", result)
         self.assertEqual(result["data"]["targets"], ["Salary"])
+        
+        # Verify workflow.start was called
+        mock_workflow.start.assert_called_once()
+        call_kwargs = mock_workflow.start.call_args[1]
+        self.assertIsNone(call_kwargs.get("preset"))
+    
+    @patch("src.services.workflow_service.get_langchain_llm")
+    @patch("src.services.workflow_service.ConfigWorkflow")
+    def test_start_workflow_with_preset(self, mock_workflow_class, mock_get_llm):
+        """Test starting a workflow with preset prompt."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        
+        mock_workflow = MagicMock()
+        mock_workflow.start.return_value = {
+            "column_classification": {
+                "targets": ["Salary"],
+                "features": ["Level"],
+                "ignore": [],
+                "reasoning": "Test reasoning"
+            },
+            "classification_confirmed": False,
+            "current_phase": "classification",
+            "preset": "salary"
+        }
+        mock_workflow.get_current_phase.return_value = "classification"
+        mock_workflow_class.return_value = mock_workflow
+        
+        service = WorkflowService(provider="openai")
+        
+        df = pd.DataFrame({
+            "Level": ["L3", "L4"],
+            "Salary": [100000, 150000]
+        })
+        
+        result = service.start_workflow(df, preset="salary")
+        
+        # Verify preset was passed to workflow
+        mock_workflow.start.assert_called_once()
+        call_kwargs = mock_workflow.start.call_args[1]
+        self.assertEqual(call_kwargs.get("preset"), "salary")
+    
+    @patch("src.services.workflow_service.get_langchain_llm")
+    @patch("src.services.workflow_service.ConfigWorkflow")
+    def test_start_workflow_with_optional_encodings(self, mock_workflow_class, mock_get_llm):
+        """Test that optional_encodings are initialized in workflow state."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        
+        mock_workflow = MagicMock()
+        mock_workflow.start.return_value = {
+            "column_classification": {
+                "targets": ["Salary"],
+                "features": ["Level"],
+                "ignore": []
+            },
+            "classification_confirmed": False,
+            "current_phase": "classification",
+            "optional_encodings": {}
+        }
+        mock_workflow.get_current_phase.return_value = "classification"
+        mock_workflow.current_state = mock_workflow.start.return_value
+        mock_workflow_class.return_value = mock_workflow
+        
+        service = WorkflowService(provider="openai")
+        
+        df = pd.DataFrame({
+            "Level": ["L3"],
+            "Salary": [100000]
+        })
+        
+        result = service.start_workflow(df)
+        
+        # Verify optional_encodings is in state
+        self.assertIn("optional_encodings", mock_workflow.current_state)
+    
+    @patch("src.services.workflow_service.get_langchain_llm")
+    @patch("src.services.workflow_service.ConfigWorkflow")
+    def test_confirm_classification_with_optional_encodings(self, mock_workflow_class, mock_get_llm):
+        """Test confirming classification with optional_encodings modifications."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        
+        mock_workflow = MagicMock()
+        mock_workflow.current_state = {
+            "column_classification": {"targets": [], "features": []},
+            "classification_confirmed": False
+        }
+        mock_workflow.confirm_classification.return_value = {
+            "feature_encodings": {"encodings": {}},
+            "encodings_confirmed": False,
+            "current_phase": "encoding",
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}}
+            }
+        }
+        mock_workflow.get_current_phase.return_value = "encoding"
+        mock_workflow_class.return_value = mock_workflow
+        
+        service = WorkflowService(provider="openai")
+        service.workflow = mock_workflow
+        
+        modifications = {
+            "targets": ["Salary"],
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}}
+            }
+        }
+        
+        result = service.confirm_classification(modifications)
+        
+        # Verify modifications were passed
+        mock_workflow.confirm_classification.assert_called_once()
+        call_args = mock_workflow.confirm_classification.call_args[0][0]
+        self.assertIn("optional_encodings", call_args)
+        self.assertEqual(call_args["optional_encodings"]["Location"]["type"], "cost_of_living")
+    
+    @patch("src.services.workflow_service.get_langchain_llm")
+    @patch("src.services.workflow_service.ConfigWorkflow")
+    def test_confirm_encoding_with_optional_encodings(self, mock_workflow_class, mock_get_llm):
+        """Test confirming encoding with optional_encodings modifications."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        
+        mock_workflow = MagicMock()
+        mock_workflow.current_state = {
+            "feature_encodings": {"encodings": {}},
+            "encodings_confirmed": False
+        }
+        mock_workflow.confirm_encoding.return_value = {
+            "model_config": {},
+            "current_phase": "configuration",
+            "optional_encodings": {
+                "Date": {"type": "normalize_recent", "params": {}}
+            }
+        }
+        mock_workflow.get_current_phase.return_value = "configuration"
+        mock_workflow_class.return_value = mock_workflow
+        
+        service = WorkflowService(provider="openai")
+        service.workflow = mock_workflow
+        
+        modifications = {
+            "encodings": {"Level": {"type": "ordinal", "mapping": {}}},
+            "optional_encodings": {
+                "Date": {"type": "normalize_recent", "params": {}}
+            }
+        }
+        
+        result = service.confirm_encoding(modifications)
+        
+        # Verify modifications were passed
+        mock_workflow.confirm_encoding.assert_called_once()
+        call_args = mock_workflow.confirm_encoding.call_args[0][0]
+        self.assertIn("optional_encodings", call_args)
+        self.assertEqual(call_args["optional_encodings"]["Date"]["type"], "normalize_recent")
     
     @patch("src.services.workflow_service.get_langchain_llm")
     @patch("src.services.workflow_service.ConfigWorkflow")

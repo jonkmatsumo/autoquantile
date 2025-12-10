@@ -12,6 +12,7 @@ from src.agents.model_configurator import (
     get_default_hyperparameters,
     run_model_configurator_sync,
 )
+from src.utils.prompt_loader import load_prompt
 
 
 class TestBuildConfigurationPrompt(unittest.TestCase):
@@ -421,6 +422,96 @@ class TestConfigurationValidation(unittest.TestCase):
             result["hyperparameters"]["training"]["objective"],
             "reg:quantileerror"
         )
+
+
+class TestModelConfiguratorPreset(unittest.TestCase):
+    """Tests for preset prompt loading in model configurator."""
+    
+    @patch("src.agents.model_configurator.load_prompt")
+    def test_preset_prompt_loaded(self, mock_load_prompt):
+        """Test that preset prompt is loaded and appended to system prompt."""
+        system_prompt = "System prompt"
+        preset_content = "**Domain Specific Instructions:**\nApply positive monotonicity to experience"
+        
+        mock_load_prompt.side_effect = lambda name: {
+            "agents/model_configurator_system": system_prompt,
+            "presets/salary": preset_content
+        }[name]
+        
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_response = AIMessage(content=json.dumps({
+            "features": [{"name": "Level", "monotone_constraint": 1}],
+            "quantiles": [0.5],
+            "hyperparameters": {},
+            "reasoning": "Test"
+        }))
+        
+        mock_llm.invoke.return_value = mock_response
+        
+        result = run_model_configurator_sync(
+            mock_llm,
+            ["Salary"],
+            {"encodings": {}},
+            preset="salary"
+        )
+        
+        # Verify both system prompt and preset were loaded
+        self.assertEqual(mock_load_prompt.call_count, 2)
+        mock_load_prompt.assert_any_call("agents/model_configurator_system")
+        mock_load_prompt.assert_any_call("presets/salary")
+    
+    @patch("src.agents.model_configurator.load_prompt")
+    def test_preset_none_does_not_load(self, mock_load_prompt):
+        """Test that preset=None does not attempt to load preset."""
+        mock_load_prompt.return_value = "System prompt"
+        
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_response = AIMessage(content=json.dumps({
+            "features": [],
+            "quantiles": [0.5],
+            "hyperparameters": {},
+            "reasoning": "Test"
+        }))
+        
+        mock_llm.invoke.return_value = mock_response
+        
+        result = run_model_configurator_sync(
+            mock_llm,
+            ["Price"],
+            {"encodings": {}},
+            preset=None
+        )
+        
+        # Should only load system prompt, not preset
+        mock_load_prompt.assert_called_once_with("agents/model_configurator_system")
+    
+    @patch("src.agents.model_configurator.load_prompt")
+    def test_preset_invalid_handles_gracefully(self, mock_load_prompt):
+        """Test that invalid preset name is handled gracefully."""
+        mock_load_prompt.side_effect = lambda name: {
+            "agents/model_configurator_system": "System prompt"
+        }.get(name, FileNotFoundError(f"Prompt file not found: {name}"))
+        
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_response = AIMessage(content=json.dumps({
+            "features": [],
+            "quantiles": [0.5],
+            "hyperparameters": {},
+            "reasoning": "Test"
+        }))
+        
+        mock_llm.invoke.return_value = mock_response
+        
+        # Should not raise exception, just log warning
+        result = run_model_configurator_sync(
+            mock_llm,
+            ["Price"],
+            {"encodings": {}},
+            preset="invalid_preset"
+        )
+        
+        # Should still work
+        self.assertIn("features", result)
 
 
 if __name__ == "__main__":

@@ -23,9 +23,10 @@ class TrainingService:
     def train_model(self, 
                    data: pd.DataFrame, 
                    remove_outliers: bool = True,
-                   callback: Optional[Callable[[str, Optional[Dict[str, Any]]], None]] = None) -> SalaryForecaster:
-        """Synchronous training (blocking). Args: data (pd.DataFrame): Training data. remove_outliers (bool): Remove outliers. callback (Optional[Callable]): Progress callback. Returns: SalaryForecaster: Trained model."""
-        forecaster = SalaryForecaster()
+                   callback: Optional[Callable[[str, Optional[Dict[str, Any]]], None]] = None,
+                   config: Optional[Dict[str, Any]] = None) -> SalaryForecaster:
+        """Synchronous training (blocking). Args: data (pd.DataFrame): Training data. remove_outliers (bool): Remove outliers. callback (Optional[Callable]): Progress callback. config (Optional[Dict[str, Any]]): Optional config dict. Returns: SalaryForecaster: Trained model."""
+        forecaster = SalaryForecaster(config=config)
         if callback:
             callback("Starting training...", None)
         forecaster.train(data, callback=callback, remove_outliers=remove_outliers)

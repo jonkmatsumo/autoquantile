@@ -10,7 +10,7 @@ This agent analyzes feature columns and determines the best encoding strategy:
 """
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.language_models import BaseChatModel
 
@@ -171,9 +171,10 @@ def run_feature_encoder_sync(
     df_json: str,
     features: List[str],
     dtypes: Dict[str, str],
-    max_iterations: int = 15
+    max_iterations: int = 15,
+    preset: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Synchronous feature encoder. Args: llm (BaseChatModel): LangChain chat model. df_json (str): JSON DataFrame sample. features (List[str]): Feature column names. dtypes (Dict[str, str]): Column to dtype mapping. max_iterations (int): Max iterations. Returns: Dict[str, Any]: Encoding recommendations."""
+    """Synchronous feature encoder. Args: llm (BaseChatModel): LangChain chat model. df_json (str): JSON DataFrame sample. features (List[str]): Feature column names. dtypes (Dict[str, str]): Column to dtype mapping. max_iterations (int): Max iterations. preset (Optional[str]): Optional preset prompt name. Returns: Dict[str, Any]: Encoding recommendations."""
     if not features:
         return {
             "encodings": {},
@@ -181,6 +182,14 @@ def run_feature_encoder_sync(
         }
     
     system_prompt = load_prompt("agents/feature_encoder_system")
+    
+    if preset and preset.lower() != "none":
+        try:
+            preset_content = load_prompt(f"presets/{preset}")
+            system_prompt += f"\n\n{preset_content}"
+        except Exception as e:
+            logger.warning(f"Failed to load preset '{preset}': {e}")
+    
     user_prompt = build_encoding_prompt(df_json, features, dtypes)
     
     messages = [

@@ -2,7 +2,10 @@ import xgboost as xgb
 import optuna
 import pandas as pd
 from typing import Dict, List, Optional, Union, Tuple, Any, Callable
-from src.xgboost.preprocessing import RankedCategoryEncoder, ProximityEncoder, SampleWeighter
+from src.xgboost.preprocessing import (
+    RankedCategoryEncoder, ProximityEncoder, SampleWeighter,
+    CostOfLivingEncoder, MetroPopulationEncoder, DateNormalizer
+)
 from src.utils.config_loader import get_config
 from src.utils.logger import get_logger
 
@@ -23,6 +26,7 @@ class QuantileForecaster:
         
         self.ranked_encoders: Dict[str, RankedCategoryEncoder] = {}
         self.proximity_encoders: Dict[str, ProximityEncoder] = {}
+        self.optional_encoders: Dict[str, Any] = {}
         
         fe_config = config.get("feature_engineering", {})
         
@@ -39,9 +43,29 @@ class QuantileForecaster:
         for col in fe_config.get("proximity_cols", []):
             self.proximity_encoders[col] = ProximityEncoder()
 
+        # Initialize optional encodings
+        optional_encodings = config.get("optional_encodings", {})
+        self.date_weight_col: Optional[str] = None
+        
+        for col, enc_config in optional_encodings.items():
+            enc_type = enc_config.get("type", "")
+            if enc_type == "cost_of_living":
+                self.optional_encoders[col] = CostOfLivingEncoder()
+            elif enc_type == "metro_population":
+                self.optional_encoders[col] = MetroPopulationEncoder()
+            elif enc_type == "normalize_recent":
+                self.optional_encoders[col] = DateNormalizer(mode="normalize_recent")
+            elif enc_type == "least_recent":
+                self.optional_encoders[col] = DateNormalizer(mode="least_recent")
+            elif enc_type == "weight_recent":
+                # Store column name for sample weighting
+                self.date_weight_col = col
+
         k = model_config.get("sample_weight_k", 1.0)
         date_col = model_config.get("date_col", "Date")
-        self.weighter = SampleWeighter(k=k, date_col=date_col)
+        # Use date_weight_col if specified, otherwise fall back to date_col
+        weight_date_col = self.date_weight_col if self.date_weight_col else date_col
+        self.weighter = SampleWeighter(k=k, date_col=weight_date_col)
         
         self.features_config: List[Dict[str, Any]] = model_config["features"]
         self.feature_names: List[str] = [f["name"] for f in self.features_config]
@@ -65,13 +89,36 @@ class QuantileForecaster:
             if col in X_proc.columns:
                 X_proc[f"{col}_Enc"] = encoder.transform(X_proc[col])
         
+        # Apply optional encodings
+        optional_feature_names = []
+        for col, encoder in self.optional_encoders.items():
+            if col in X_proc.columns:
+                # Fit encoder on first call if it's a DateNormalizer
+                if isinstance(encoder, DateNormalizer) and encoder.min_date is None:
+                    encoder.fit(X_proc[col])
+                
+                # Generate feature name based on encoding type
+                if isinstance(encoder, CostOfLivingEncoder):
+                    feature_name = f"{col}_CostOfLiving"
+                elif isinstance(encoder, MetroPopulationEncoder):
+                    feature_name = f"{col}_MetroPopulation"
+                elif isinstance(encoder, DateNormalizer):
+                    feature_name = f"{col}_Normalized"
+                else:
+                    feature_name = f"{col}_Optional"
+                
+                X_proc[feature_name] = encoder.transform(X_proc[col])
+                optional_feature_names.append(feature_name)
+        
         missing_feats = [f for f in self.feature_names if f not in X_proc.columns]
         if missing_feats:
              for f in missing_feats:
                  if f in X.columns:
                      X_proc[f] = X[f]
 
-        return X_proc[self.feature_names]
+        # Include both configured features and optional encoding features
+        all_feature_names = list(self.feature_names) + [f for f in optional_feature_names if f not in self.feature_names]
+        return X_proc[all_feature_names]
 
     def remove_outliers(self, df: pd.DataFrame, method: str = "iqr", threshold: float = 1.5) -> Tuple[pd.DataFrame, int]:
         """Remove outliers from the dataframe based on target columns.

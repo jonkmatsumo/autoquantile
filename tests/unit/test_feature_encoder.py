@@ -14,6 +14,7 @@ from src.agents.feature_encoder import (
     parse_encoding_response,
     run_feature_encoder_sync,
 )
+from src.utils.prompt_loader import load_prompt
 
 
 class TestGetFeatureEncoderTools(unittest.TestCase):
@@ -452,6 +453,74 @@ class TestEncodingTypeValidation(unittest.TestCase):
         self.assertIsInstance(mapping, dict)
         self.assertEqual(mapping["L1"], 0)
         self.assertEqual(mapping["L3"], 2)
+
+
+class TestFeatureEncoderPreset(unittest.TestCase):
+    """Tests for preset prompt loading in feature encoder."""
+    
+    @patch("src.agents.feature_encoder.load_prompt")
+    def test_preset_prompt_loaded(self, mock_load_prompt):
+        """Test that preset prompt is loaded and appended to system prompt."""
+        system_prompt = "System prompt"
+        preset_content = "**Domain Specific Instructions:**\nUse cost of living for locations"
+        
+        mock_load_prompt.side_effect = lambda name: {
+            "agents/feature_encoder_system": system_prompt,
+            "presets/salary": preset_content
+        }[name]
+        
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_response = AIMessage(content=json.dumps({
+            "encodings": {"Location": {"type": "proximity"}},
+            "summary": "Test"
+        }))
+        mock_response.tool_calls = []
+        
+        mock_agent = MagicMock()
+        mock_agent.invoke.return_value = mock_response
+        mock_llm.bind_tools.return_value = mock_agent
+        
+        df = pd.DataFrame({"Location": ["NY"]})
+        result = run_feature_encoder_sync(
+            mock_llm,
+            df.to_json(),
+            ["Location"],
+            {"Location": "object"},
+            preset="salary"
+        )
+        
+        # Verify both system prompt and preset were loaded
+        self.assertEqual(mock_load_prompt.call_count, 2)
+        mock_load_prompt.assert_any_call("agents/feature_encoder_system")
+        mock_load_prompt.assert_any_call("presets/salary")
+    
+    @patch("src.agents.feature_encoder.load_prompt")
+    def test_preset_none_does_not_load(self, mock_load_prompt):
+        """Test that preset=None does not attempt to load preset."""
+        mock_load_prompt.return_value = "System prompt"
+        
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_response = AIMessage(content=json.dumps({
+            "encodings": {},
+            "summary": "Test"
+        }))
+        mock_response.tool_calls = []
+        
+        mock_agent = MagicMock()
+        mock_agent.invoke.return_value = mock_response
+        mock_llm.bind_tools.return_value = mock_agent
+        
+        df = pd.DataFrame({"A": [1]})
+        result = run_feature_encoder_sync(
+            mock_llm,
+            df.to_json(),
+            ["A"],
+            {"A": "int64"},
+            preset=None
+        )
+        
+        # Should only load system prompt, not preset
+        mock_load_prompt.assert_called_once_with("agents/feature_encoder_system")
 
 
 if __name__ == "__main__":

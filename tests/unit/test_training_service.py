@@ -78,3 +78,62 @@ class TestTrainingService(unittest.TestCase):
     def test_get_job_status_invalid(self):
         status = self.service.get_job_status("invalid_id")
         self.assertIsNone(status)
+    
+    @patch("src.services.training_service.SalaryForecaster")
+    def test_train_with_optional_encodings(self, MockForecaster):
+        """Test training with optional encodings in config."""
+        mock_instance = MockForecaster.return_value
+        
+        # Create config with optional encodings
+        config = {
+            "model": {
+                "targets": ["Salary"],
+                "features": [{"name": "Location_CostOfLiving", "monotone_constraint": 0}],
+                "quantiles": [0.5]
+            },
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}}
+            }
+        }
+        
+        df = pd.DataFrame({
+            "Location": ["New York", "San Francisco"],
+            "Salary": [100000, 150000]
+        })
+        
+        model = self.service.train_model(df, config=config)
+        
+        # Verify Forecaster was instantiated with config
+        MockForecaster.assert_called_once()
+        call_kwargs = MockForecaster.call_args[1]
+        self.assertIn("optional_encodings", call_kwargs["config"])
+        self.assertEqual(call_kwargs["config"]["optional_encodings"]["Location"]["type"], "cost_of_living")
+        
+        # Verify train was called
+        mock_instance.train.assert_called_once()
+    
+    @patch("src.services.training_service.SalaryForecaster")
+    def test_train_without_optional_encodings(self, MockForecaster):
+        """Test training without optional encodings (backward compatibility)."""
+        mock_instance = MockForecaster.return_value
+        
+        # Create config without optional encodings
+        config = {
+            "model": {
+                "targets": ["Salary"],
+                "features": [{"name": "Level", "monotone_constraint": 1}],
+                "quantiles": [0.5]
+            }
+            # No optional_encodings field
+        }
+        
+        df = pd.DataFrame({
+            "Level": ["L3", "L4"],
+            "Salary": [100000, 150000]
+        })
+        
+        model = self.service.train_model(df, config=config)
+        
+        # Should still work
+        MockForecaster.assert_called_once()
+        mock_instance.train.assert_called_once()

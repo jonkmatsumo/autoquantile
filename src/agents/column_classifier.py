@@ -8,7 +8,7 @@ This agent analyzes a dataset and classifies each column as:
 """
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.language_models import BaseChatModel
 
@@ -171,10 +171,19 @@ def run_column_classifier_sync(
     df_json: str,
     columns: List[str],
     dtypes: Dict[str, str],
-    max_iterations: int = 10
+    max_iterations: int = 10,
+    preset: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Synchronous column classifier. Args: llm (BaseChatModel): LangChain chat model. df_json (str): JSON DataFrame sample. columns (List[str]): Column names. dtypes (Dict[str, str]): Column to dtype mapping. max_iterations (int): Max tool-calling iterations. Returns: Dict[str, Any]: Classification result."""
+    """Synchronous column classifier. Args: llm (BaseChatModel): LangChain chat model. df_json (str): JSON DataFrame sample. columns (List[str]): Column names. dtypes (Dict[str, str]): Column to dtype mapping. max_iterations (int): Max tool-calling iterations. preset (Optional[str]): Optional preset prompt name. Returns: Dict[str, Any]: Classification result."""
     system_prompt = load_prompt("agents/column_classifier_system")
+    
+    if preset and preset.lower() != "none":
+        try:
+            preset_content = load_prompt(f"presets/{preset}")
+            system_prompt += f"\n\n{preset_content}"
+        except Exception as e:
+            logger.warning(f"Failed to load preset '{preset}': {e}")
+    
     user_prompt = build_classification_prompt(df_json, columns, dtypes)
     
     messages = [

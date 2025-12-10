@@ -186,12 +186,21 @@ def run_model_configurator_sync(
     encodings: Dict[str, Any],
     correlation_data: Optional[str] = None,
     column_stats: Optional[Dict[str, Any]] = None,
-    dataset_size: int = 0
+    dataset_size: int = 0,
+    preset: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Synchronous model configurator. Args: llm (BaseChatModel): LangChain chat model. targets (List[str]): Target column names. encodings (Dict[str, Any]): Feature encoding recommendations. correlation_data (Optional[str]): Correlation JSON. column_stats (Optional[Dict[str, Any]]): Column statistics. dataset_size (int): Number of rows. Returns:
+    """Synchronous model configurator. Args: llm (BaseChatModel): LangChain chat model. targets (List[str]): Target column names. encodings (Dict[str, Any]): Feature encoding recommendations. correlation_data (Optional[str]): Correlation JSON. column_stats (Optional[Dict[str, Any]]): Column statistics. dataset_size (int): Number of rows. preset (Optional[str]): Optional preset prompt name. Returns:
         Model configuration with features, quantiles, hyperparameters.
     """
     system_prompt = load_prompt("agents/model_configurator_system")
+    
+    if preset and preset.lower() != "none":
+        try:
+            preset_content = load_prompt(f"presets/{preset}")
+            system_prompt += f"\n\n{preset_content}"
+        except Exception as e:
+            logger.warning(f"Failed to load preset '{preset}': {e}")
+    
     user_prompt = build_configuration_prompt(
         targets, encodings, correlation_data, column_stats, dataset_size
     )

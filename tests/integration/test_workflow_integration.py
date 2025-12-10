@@ -415,6 +415,387 @@ class TestToolIntegration(unittest.TestCase):
             self.assertIn("targets", result)
 
 
+class TestWorkflowWithPreset(unittest.TestCase):
+    """Integration tests for workflow with preset prompts."""
+    
+    @patch("src.services.workflow_service.get_langchain_llm")
+    @patch("src.services.workflow_service.ConfigWorkflow")
+    def test_workflow_with_preset(self, mock_workflow_class, mock_get_llm):
+        """Test end-to-end workflow with preset prompt."""
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_get_llm.return_value = mock_llm
+        
+        mock_workflow = MagicMock()
+        mock_workflow.start.return_value = {
+            "column_classification": {
+                "targets": ["Salary"],
+                "features": ["Level"],
+                "ignore": [],
+                "reasoning": "Used salary preset"
+            },
+            "current_phase": "classification",
+            "preset": "salary"
+        }
+        mock_workflow.get_current_phase.return_value = "classification"
+        mock_workflow.confirm_classification.return_value = {
+            "feature_encodings": {"encodings": {}},
+            "current_phase": "encoding",
+            "preset": "salary"
+        }
+        mock_workflow.confirm_encoding.return_value = {
+            "model_config": {},
+            "final_config": {"model": {"targets": ["Salary"]}},
+            "current_phase": "complete",
+            "preset": "salary"
+        }
+        mock_workflow.get_final_config.return_value = {"model": {"targets": ["Salary"]}}
+        mock_workflow_class.return_value = mock_workflow
+        
+        service = WorkflowService(provider="openai")
+        
+        df = pd.DataFrame({
+            "Level": ["L3", "L4"],
+            "Salary": [100000, 150000]
+        })
+        
+        # Start workflow with preset
+        result = service.start_workflow(df, preset="salary")
+        
+        # Verify preset was passed
+        call_kwargs = mock_workflow.start.call_args[1]
+        self.assertEqual(call_kwargs.get("preset"), "salary")
+        self.assertEqual(result["phase"], "classification")
+        
+        # Verify preset persists through workflow
+        service.confirm_classification()
+        self.assertEqual(mock_workflow.confirm_classification.call_count, 1)
+
+
+class TestWorkflowWithOptionalEncodings(unittest.TestCase):
+    """Integration tests for workflow with optional encodings."""
+    
+    @patch("src.services.workflow_service.get_langchain_llm")
+    @patch("src.services.workflow_service.ConfigWorkflow")
+    def test_workflow_with_optional_encodings(self, mock_workflow_class, mock_get_llm):
+        """Test end-to-end workflow with optional encodings."""
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_get_llm.return_value = mock_llm
+        
+        mock_workflow = MagicMock()
+        mock_workflow.start.return_value = {
+            "column_classification": {
+                "targets": ["Salary"],
+                "features": ["Location", "Date"],
+                "ignore": []
+            },
+            "current_phase": "classification",
+            "optional_encodings": {}
+        }
+        mock_workflow.get_current_phase.return_value = "classification"
+        
+        mock_workflow.confirm_classification.return_value = {
+            "feature_encodings": {"encodings": {}},
+            "current_phase": "encoding",
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}},
+                "Date": {"type": "normalize_recent", "params": {}}
+            }
+        }
+        
+        mock_workflow.confirm_encoding.return_value = {
+            "model_config": {},
+            "final_config": {
+                "model": {"targets": ["Salary"]},
+                "optional_encodings": {
+                    "Location": {"type": "cost_of_living", "params": {}},
+                    "Date": {"type": "normalize_recent", "params": {}}
+                }
+            },
+            "current_phase": "complete"
+        }
+        mock_workflow.get_final_config.return_value = {
+            "model": {"targets": ["Salary"]},
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}},
+                "Date": {"type": "normalize_recent", "params": {}}
+            }
+        }
+        mock_workflow_class.return_value = mock_workflow
+        
+        service = WorkflowService(provider="openai")
+        
+        df = pd.DataFrame({
+            "Location": ["New York", "San Francisco"],
+            "Date": ["2020-01-01", "2021-01-01"],
+            "Salary": [100000, 150000]
+        })
+        
+        # Start workflow
+        service.start_workflow(df)
+        
+        # Confirm classification with optional encodings
+        modifications = {
+            "targets": ["Salary"],
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}},
+                "Date": {"type": "normalize_recent", "params": {}}
+            }
+        }
+        result = service.confirm_classification(modifications)
+        
+        # Verify optional_encodings were passed
+        call_args = mock_workflow.confirm_classification.call_args[0][0]
+        self.assertIn("optional_encodings", call_args)
+        self.assertIn("Location", call_args["optional_encodings"])
+        self.assertIn("Date", call_args["optional_encodings"])
+        
+        # Confirm encoding
+        service.confirm_encoding()
+        
+        # Get final config
+        final_config = service.get_final_config()
+        self.assertIn("optional_encodings", final_config)
+        self.assertEqual(final_config["optional_encodings"]["Location"]["type"], "cost_of_living")
+        self.assertEqual(final_config["optional_encodings"]["Date"]["type"], "normalize_recent")
+    
+    @patch("src.services.workflow_service.get_langchain_llm")
+    @patch("src.services.workflow_service.ConfigWorkflow")
+    def test_workflow_with_preset_and_optional_encodings(self, mock_workflow_class, mock_get_llm):
+        """Test workflow with both preset and optional encodings."""
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_get_llm.return_value = mock_llm
+        
+        mock_workflow = MagicMock()
+        mock_workflow.start.return_value = {
+            "column_classification": {"targets": ["Salary"], "features": ["Location"]},
+            "current_phase": "classification",
+            "preset": "salary",
+            "optional_encodings": {}
+        }
+        mock_workflow.get_current_phase.return_value = "classification"
+        mock_workflow.confirm_classification.return_value = {
+            "feature_encodings": {"encodings": {}},
+            "current_phase": "encoding",
+            "preset": "salary",
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}}
+            }
+        }
+        mock_workflow.confirm_encoding.return_value = {
+            "model_config": {},
+            "final_config": {
+                "model": {"targets": ["Salary"]},
+                "optional_encodings": {
+                    "Location": {"type": "cost_of_living", "params": {}}
+                }
+            },
+            "current_phase": "complete",
+            "preset": "salary"
+        }
+        mock_workflow.get_final_config.return_value = {
+            "model": {"targets": ["Salary"]},
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}}
+            }
+        }
+        mock_workflow_class.return_value = mock_workflow
+        
+        service = WorkflowService(provider="openai")
+        
+        df = pd.DataFrame({
+            "Location": ["New York"],
+            "Salary": [100000]
+        })
+        
+        # Start with preset
+        service.start_workflow(df, preset="salary")
+        
+        # Add optional encodings
+        modifications = {
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}}
+            }
+        }
+        service.confirm_classification(modifications)
+        service.confirm_encoding()
+        
+        # Verify both preset and optional_encodings in final config
+        final_config = service.get_final_config()
+        self.assertIn("optional_encodings", final_config)
+        self.assertEqual(final_config["optional_encodings"]["Location"]["type"], "cost_of_living")
+
+
+class TestTrainingWithOptionalEncodings(unittest.TestCase):
+    """Integration tests for training with optional encodings."""
+    
+    @patch("src.xgboost.preprocessing.GeoMapper")
+    @patch("src.xgboost.preprocessing.get_config")
+    @patch("src.utils.geo_utils.get_config")
+    @patch("src.xgboost.model.xgb.train")
+    @patch("src.xgboost.model.xgb.cv")
+    @patch("src.xgboost.model.xgb.DMatrix")
+    def test_training_with_cost_of_living_encoding(
+        self, mock_dmatrix, mock_cv, mock_train, 
+        mock_geo_get_config, mock_preprocessing_get_config, mock_geo_mapper
+    ):
+        """Test training with cost_of_living optional encoding."""
+        config = {
+            "mappings": {"levels": {}, "location_targets": {}},
+            "location_settings": {"max_distance_km": 50},
+            "model": {
+                "targets": ["Salary"],
+                "quantiles": [0.5],
+                "features": [
+                    {"name": "Location_CostOfLiving", "monotone_constraint": 0}
+                ],
+                "hyperparameters": {"training": {}, "cv": {}}
+            },
+            "feature_engineering": {},
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}}
+            }
+        }
+        mock_preprocessing_get_config.return_value = config
+        mock_geo_get_config.return_value = config
+        mock_cv.return_value = pd.DataFrame({'test-quantile-mean': [0.5]})
+        
+        mock_mapper = mock_geo_mapper.return_value
+        mock_mapper.get_zone.return_value = 1
+        
+        from src.xgboost.model import QuantileForecaster
+        
+        df = pd.DataFrame({
+            "Location": ["New York", "San Francisco", "Austin"],
+            "Salary": [100000, 150000, 120000]
+        })
+        
+        forecaster = QuantileForecaster(config=config)
+        
+        # Test preprocessing
+        preprocessed = forecaster._preprocess(df)
+        
+        # Should have Location_CostOfLiving feature
+        self.assertIn("Location_CostOfLiving", preprocessed.columns)
+        
+        # Train should work
+        forecaster.train(df)
+        self.assertTrue(mock_train.called)
+    
+    @patch("src.xgboost.preprocessing.get_config")
+    @patch("src.utils.geo_utils.get_config")
+    @patch("src.xgboost.model.xgb.train")
+    @patch("src.xgboost.model.xgb.cv")
+    @patch("src.xgboost.model.xgb.DMatrix")
+    def test_training_with_date_normalize_recent(
+        self, mock_dmatrix, mock_cv, mock_train,
+        mock_geo_get_config, mock_preprocessing_get_config
+    ):
+        """Test training with normalize_recent date encoding."""
+        config = {
+            "mappings": {"levels": {}, "location_targets": {}},
+            "location_settings": {"max_distance_km": 50},
+            "model": {
+                "targets": ["Salary"],
+                "quantiles": [0.5],
+                "features": [
+                    {"name": "Date_Normalized", "monotone_constraint": 0}
+                ],
+                "hyperparameters": {"training": {}, "cv": {}}
+            },
+            "feature_engineering": {},
+            "optional_encodings": {
+                "Date": {"type": "normalize_recent", "params": {}}
+            }
+        }
+        mock_preprocessing_get_config.return_value = config
+        mock_geo_get_config.return_value = config
+        mock_cv.return_value = pd.DataFrame({'test-quantile-mean': [0.5]})
+        
+        from src.xgboost.model import QuantileForecaster
+        
+        df = pd.DataFrame({
+            "Date": [
+                pd.Timestamp("2020-01-01"),
+                pd.Timestamp("2021-01-01"),
+                pd.Timestamp("2022-01-01")
+            ],
+            "Salary": [100000, 120000, 150000]
+        })
+        
+        forecaster = QuantileForecaster(config=config)
+        
+        # Test preprocessing
+        preprocessed = forecaster._preprocess(df)
+        
+        # Should have Date_Normalized feature
+        self.assertIn("Date_Normalized", preprocessed.columns)
+        # Most recent date should be 1.0
+        self.assertEqual(preprocessed["Date_Normalized"].iloc[2], 1.0)
+        # Least recent date should be 0.0
+        self.assertEqual(preprocessed["Date_Normalized"].iloc[0], 0.0)
+        
+        # Train should work
+        forecaster.train(df)
+        self.assertTrue(mock_train.called)
+    
+    @patch("src.xgboost.preprocessing.GeoMapper")
+    @patch("src.xgboost.preprocessing.get_config")
+    @patch("src.utils.geo_utils.get_config")
+    @patch("src.xgboost.model.xgb.train")
+    @patch("src.xgboost.model.xgb.cv")
+    @patch("src.xgboost.model.xgb.DMatrix")
+    def test_training_with_multiple_optional_encodings(
+        self, mock_dmatrix, mock_cv, mock_train,
+        mock_geo_get_config, mock_preprocessing_get_config, mock_geo_mapper
+    ):
+        """Test training with multiple optional encodings."""
+        config = {
+            "mappings": {"levels": {}, "location_targets": {}},
+            "location_settings": {"max_distance_km": 50},
+            "model": {
+                "targets": ["Salary"],
+                "quantiles": [0.5],
+                "features": [
+                    {"name": "Location_CostOfLiving", "monotone_constraint": 0},
+                    {"name": "Date_Normalized", "monotone_constraint": 0}
+                ],
+                "hyperparameters": {"training": {}, "cv": {}}
+            },
+            "feature_engineering": {},
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}},
+                "Date": {"type": "normalize_recent", "params": {}}
+            }
+        }
+        mock_preprocessing_get_config.return_value = config
+        mock_geo_get_config.return_value = config
+        mock_cv.return_value = pd.DataFrame({'test-quantile-mean': [0.5]})
+        
+        mock_mapper = mock_geo_mapper.return_value
+        mock_mapper.get_zone.return_value = 1
+        
+        from src.xgboost.model import QuantileForecaster
+        
+        df = pd.DataFrame({
+            "Location": ["New York", "San Francisco"],
+            "Date": [pd.Timestamp("2020-01-01"), pd.Timestamp("2021-01-01")],
+            "Salary": [100000, 150000]
+        })
+        
+        forecaster = QuantileForecaster(config=config)
+        
+        # Test preprocessing
+        preprocessed = forecaster._preprocess(df)
+        
+        # Should have both optional encoding features
+        self.assertIn("Location_CostOfLiving", preprocessed.columns)
+        self.assertIn("Date_Normalized", preprocessed.columns)
+        
+        # Train should work
+        forecaster.train(df)
+        self.assertTrue(mock_train.called)
+
+
 if __name__ == "__main__":
     unittest.main()
 

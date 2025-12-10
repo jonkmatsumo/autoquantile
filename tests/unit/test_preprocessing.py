@@ -2,7 +2,11 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import patch, MagicMock
-from src.xgboost.preprocessing import RankedCategoryEncoder, ProximityEncoder, SampleWeighter
+from src.xgboost.preprocessing import (
+    RankedCategoryEncoder, ProximityEncoder, SampleWeighter,
+    CostOfLivingEncoder, MetroPopulationEncoder, DateNormalizer
+)
+from datetime import datetime, timedelta
 
 # --- RankedCategoryEncoder Tests ---
 
@@ -280,3 +284,169 @@ def test_sample_weighter_config_key():
         
         # Should load k from config
         assert weighter.k == 2.0
+
+
+# --- CostOfLivingEncoder Tests ---
+
+def test_cost_of_living_encoder_transform():
+    with patch('src.xgboost.preprocessing.GeoMapper') as MockGeoMapper:
+        mock_mapper = MockGeoMapper.return_value
+        mock_mapper.get_zone.side_effect = lambda x: 1 if x == "NY" else (2 if x == "SF" else 4)
+        
+        encoder = CostOfLivingEncoder()
+        
+        X = pd.Series(["NY", "SF", "Other", 123])
+        result = encoder.transform(X)
+        
+        expected = np.array([1, 2, 4, 4])
+        np.testing.assert_array_equal(result, expected)
+
+
+def test_cost_of_living_encoder_fit():
+    with patch('src.xgboost.preprocessing.GeoMapper'):
+        encoder = CostOfLivingEncoder()
+        X = pd.Series(["NY", "SF"])
+        result = encoder.fit(X)
+        assert result is encoder
+
+
+# --- MetroPopulationEncoder Tests ---
+
+def test_metro_population_encoder_transform():
+    with patch('src.xgboost.preprocessing.GeoMapper') as MockGeoMapper:
+        mock_mapper = MockGeoMapper.return_value
+        mock_mapper.get_zone.return_value = 1
+        
+        encoder = MetroPopulationEncoder()
+        
+        X = pd.Series(["NY", "SF"])
+        result = encoder.transform(X)
+        
+        # Zone 1 should map to 5000000
+        expected = np.array([5000000, 5000000])
+        np.testing.assert_array_equal(result, expected)
+
+
+def test_metro_population_encoder_different_zones():
+    with patch('src.xgboost.preprocessing.GeoMapper') as MockGeoMapper:
+        mock_mapper = MockGeoMapper.return_value
+        mock_mapper.get_zone.side_effect = lambda x: {"NY": 1, "Austin": 2, "Small": 4}.get(x, 4)
+        
+        encoder = MetroPopulationEncoder()
+        
+        X = pd.Series(["NY", "Austin", "Small"])
+        result = encoder.transform(X)
+        
+        expected = np.array([5000000, 2000000, 100000])
+        np.testing.assert_array_equal(result, expected)
+
+
+def test_metro_population_encoder_non_string():
+    with patch('src.xgboost.preprocessing.GeoMapper') as MockGeoMapper:
+        mock_mapper = MockGeoMapper.return_value
+        
+        encoder = MetroPopulationEncoder()
+        
+        X = pd.Series([123, None])
+        result = encoder.transform(X)
+        
+        # Non-string should return zone 4 population
+        expected = np.array([100000, 100000])
+        np.testing.assert_array_equal(result, expected)
+
+
+# --- DateNormalizer Tests ---
+
+def test_date_normalizer_normalize_recent():
+    encoder = DateNormalizer(mode="normalize_recent")
+    
+    dates = pd.Series([
+        pd.Timestamp("2020-01-01"),
+        pd.Timestamp("2021-01-01"),
+        pd.Timestamp("2022-01-01")
+    ])
+    
+    encoder.fit(dates)
+    result = encoder.transform(dates)
+    
+    # Most recent (2022) should be 1.0, least recent (2020) should be 0.0
+    assert result.iloc[0] == 0.0
+    assert result.iloc[2] == 1.0
+    assert 0.0 < result.iloc[1] < 1.0
+
+
+def test_date_normalizer_least_recent():
+    encoder = DateNormalizer(mode="least_recent")
+    
+    dates = pd.Series([
+        pd.Timestamp("2020-01-01"),
+        pd.Timestamp("2021-01-01"),
+        pd.Timestamp("2022-01-01")
+    ])
+    
+    encoder.fit(dates)
+    result = encoder.transform(dates)
+    
+    # Least recent (2020) should be 0.0, most recent (2022) should be 1.0
+    assert result.iloc[0] == 0.0
+    assert result.iloc[2] == 1.0
+
+
+def test_date_normalizer_single_date():
+    encoder = DateNormalizer()
+    
+    dates = pd.Series([pd.Timestamp("2020-01-01")])
+    
+    encoder.fit(dates)
+    result = encoder.transform(dates)
+    
+    # Single date should result in 1.0 (or 0.0 if range is 0)
+    assert result.iloc[0] in [0.0, 1.0]
+
+
+def test_date_normalizer_nat_handling():
+    encoder = DateNormalizer()
+    
+    dates = pd.Series([
+        pd.Timestamp("2020-01-01"),
+        pd.NaT,
+        pd.Timestamp("2022-01-01")
+    ])
+    
+    encoder.fit(dates)
+    result = encoder.transform(dates)
+    
+    # NaT should be filled with 0.0
+    assert result.iloc[1] == 0.0
+    assert not pd.isna(result.iloc[1])
+
+
+def test_date_normalizer_dataframe_input():
+    encoder = DateNormalizer()
+    
+    df = pd.DataFrame({"Date": [
+        pd.Timestamp("2020-01-01"),
+        pd.Timestamp("2022-01-01")
+    ]})
+    
+    encoder.fit(df)
+    result = encoder.transform(df)
+    
+    assert len(result) == 2
+    assert result.iloc[0] == 0.0
+    assert result.iloc[1] == 1.0
+
+
+def test_date_normalizer_fit():
+    encoder = DateNormalizer()
+    
+    dates = pd.Series([
+        pd.Timestamp("2020-01-01"),
+        pd.Timestamp("2022-01-01")
+    ])
+    
+    result = encoder.fit(dates)
+    
+    assert result is encoder
+    assert encoder.min_date is not None
+    assert encoder.max_date is not None

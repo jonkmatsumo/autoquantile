@@ -3,7 +3,8 @@ import unittest
 from unittest.mock import MagicMock, patch
 import pandas as pd
 import numpy as np
-from src.xgboost.model import SalaryForecaster
+from datetime import datetime, timedelta
+from src.xgboost.model import SalaryForecaster, QuantileForecaster
 
 @pytest.fixture(scope="module")
 def trained_model():
@@ -650,3 +651,264 @@ class TestRemoveOutliersErrorHandling(unittest.TestCase):
         # Should remove rows that are outliers in ANY target
         self.assertGreater(removed, 0)
         self.assertLess(len(df_clean), len(df))
+
+
+class TestOptionalEncodings(unittest.TestCase):
+    """Tests for QuantileForecaster with optional encodings."""
+    
+    def setUp(self):
+        self.df = pd.DataFrame({
+            "Level": ["E3", "E4", "E5"],
+            "Location": ["New York", "San Francisco", "Austin"],
+            "Date": [pd.Timestamp("2020-01-01"), pd.Timestamp("2021-01-01"), pd.Timestamp("2022-01-01")],
+            "YearsOfExperience": [2, 5, 8],
+            "BaseSalary": [100000, 150000, 200000]
+        })
+    
+    @patch("src.xgboost.preprocessing.GeoMapper")
+    @patch("src.xgboost.preprocessing.get_config")
+    @patch("src.utils.geo_utils.get_config")
+    def test_preprocess_with_cost_of_living_encoding(self, mock_geo_get_config, mock_preprocessing_get_config, mock_geo_mapper):
+        """Test preprocessing with cost_of_living optional encoding."""
+        config = {
+            "mappings": {"levels": {"E3": 0, "E4": 1, "E5": 2}, "location_targets": {}},
+            "location_settings": {"max_distance_km": 50},
+            "model": {
+                "targets": ["BaseSalary"],
+                "quantiles": [0.5],
+                "features": [
+                    {"name": "Level_Enc", "monotone_constraint": 1},
+                    {"name": "Location_CostOfLiving", "monotone_constraint": 0}
+                ],
+                "hyperparameters": {"training": {}, "cv": {}}
+            },
+            "feature_engineering": {
+                "ranked_cols": {"Level": "levels"}
+            },
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}}
+            }
+        }
+        mock_preprocessing_get_config.return_value = config
+        mock_geo_get_config.return_value = config
+        
+        mock_mapper = mock_geo_mapper.return_value
+        mock_mapper.get_zone.return_value = 1
+        
+        forecaster = QuantileForecaster(config=config)
+        result = forecaster._preprocess(self.df)
+        
+        # Should have Location_CostOfLiving feature
+        self.assertIn("Location_CostOfLiving", result.columns)
+        # Should have Level_Enc feature
+        self.assertIn("Level_Enc", result.columns)
+    
+    @patch("src.xgboost.preprocessing.GeoMapper")
+    @patch("src.xgboost.preprocessing.get_config")
+    @patch("src.utils.geo_utils.get_config")
+    def test_preprocess_with_metro_population_encoding(self, mock_geo_get_config, mock_preprocessing_get_config, mock_geo_mapper):
+        """Test preprocessing with metro_population optional encoding."""
+        config = {
+            "mappings": {"levels": {"E3": 0}, "location_targets": {}},
+            "location_settings": {"max_distance_km": 50},
+            "model": {
+                "targets": ["BaseSalary"],
+                "quantiles": [0.5],
+                "features": [
+                    {"name": "Location_MetroPopulation", "monotone_constraint": 0}
+                ],
+                "hyperparameters": {"training": {}, "cv": {}}
+            },
+            "feature_engineering": {},
+            "optional_encodings": {
+                "Location": {"type": "metro_population", "params": {}}
+            }
+        }
+        mock_preprocessing_get_config.return_value = config
+        mock_geo_get_config.return_value = config
+        
+        mock_mapper = mock_geo_mapper.return_value
+        mock_mapper.get_zone.return_value = 1
+        
+        forecaster = QuantileForecaster(config=config)
+        result = forecaster._preprocess(self.df)
+        
+        # Should have Location_MetroPopulation feature
+        self.assertIn("Location_MetroPopulation", result.columns)
+        # Should contain population values
+        self.assertTrue(all(result["Location_MetroPopulation"] > 0))
+    
+    @patch("src.xgboost.preprocessing.get_config")
+    @patch("src.utils.geo_utils.get_config")
+    def test_preprocess_with_normalize_recent_date_encoding(self, mock_geo_get_config, mock_preprocessing_get_config):
+        """Test preprocessing with normalize_recent date encoding."""
+        config = {
+            "mappings": {"levels": {}, "location_targets": {}},
+            "location_settings": {"max_distance_km": 50},
+            "model": {
+                "targets": ["BaseSalary"],
+                "quantiles": [0.5],
+                "features": [
+                    {"name": "Date_Normalized", "monotone_constraint": 0}
+                ],
+                "hyperparameters": {"training": {}, "cv": {}}
+            },
+            "feature_engineering": {},
+            "optional_encodings": {
+                "Date": {"type": "normalize_recent", "params": {}}
+            }
+        }
+        mock_preprocessing_get_config.return_value = config
+        mock_geo_get_config.return_value = config
+        
+        forecaster = QuantileForecaster(config=config)
+        result = forecaster._preprocess(self.df)
+        
+        # Should have Date_Normalized feature
+        self.assertIn("Date_Normalized", result.columns)
+        # Values should be between 0 and 1
+        self.assertTrue(all((result["Date_Normalized"] >= 0) & (result["Date_Normalized"] <= 1)))
+        # Most recent date should be 1.0
+        self.assertEqual(result["Date_Normalized"].iloc[2], 1.0)
+        # Least recent date should be 0.0
+        self.assertEqual(result["Date_Normalized"].iloc[0], 0.0)
+    
+    @patch("src.xgboost.preprocessing.get_config")
+    @patch("src.utils.geo_utils.get_config")
+    def test_preprocess_with_least_recent_date_encoding(self, mock_geo_get_config, mock_preprocessing_get_config):
+        """Test preprocessing with least_recent date encoding."""
+        config = {
+            "mappings": {"levels": {}, "location_targets": {}},
+            "location_settings": {"max_distance_km": 50},
+            "model": {
+                "targets": ["BaseSalary"],
+                "quantiles": [0.5],
+                "features": [
+                    {"name": "Date_Normalized", "monotone_constraint": 0}
+                ],
+                "hyperparameters": {"training": {}, "cv": {}}
+            },
+            "feature_engineering": {},
+            "optional_encodings": {
+                "Date": {"type": "least_recent", "params": {}}
+            }
+        }
+        mock_preprocessing_get_config.return_value = config
+        mock_geo_get_config.return_value = config
+        
+        forecaster = QuantileForecaster(config=config)
+        result = forecaster._preprocess(self.df)
+        
+        # Should have Date_Normalized feature
+        self.assertIn("Date_Normalized", result.columns)
+        # Values should be between 0 and 1
+        self.assertTrue(all((result["Date_Normalized"] >= 0) & (result["Date_Normalized"] <= 1)))
+    
+    @patch("src.xgboost.preprocessing.GeoMapper")
+    @patch("src.xgboost.preprocessing.get_config")
+    @patch("src.utils.geo_utils.get_config")
+    def test_preprocess_with_weight_recent_date_encoding(self, mock_geo_get_config, mock_preprocessing_get_config, mock_geo_mapper):
+        """Test that weight_recent encoding sets up sample weighting correctly."""
+        config = {
+            "mappings": {"levels": {}, "location_targets": {}},
+            "location_settings": {"max_distance_km": 50},
+            "model": {
+                "targets": ["BaseSalary"],
+                "quantiles": [0.5],
+                "features": [
+                    {"name": "YearsOfExperience", "monotone_constraint": 1}
+                ],
+                "sample_weight_k": 1.0,
+                "hyperparameters": {"training": {}, "cv": {}}
+            },
+            "feature_engineering": {},
+            "optional_encodings": {
+                "Date": {"type": "weight_recent", "params": {}}
+            }
+        }
+        mock_preprocessing_get_config.return_value = config
+        mock_geo_get_config.return_value = config
+        
+        forecaster = QuantileForecaster(config=config)
+        
+        # Should have date_weight_col set
+        self.assertEqual(forecaster.date_weight_col, "Date")
+        # Weighter should use Date column
+        self.assertEqual(forecaster.weighter.date_col, "Date")
+        
+        # Test that weights are calculated
+        weights = forecaster.weighter.transform(self.df)
+        self.assertEqual(len(weights), len(self.df))
+        self.assertTrue(all(weights > 0))
+    
+    @patch("src.xgboost.preprocessing.GeoMapper")
+    @patch("src.xgboost.preprocessing.get_config")
+    @patch("src.utils.geo_utils.get_config")
+    def test_preprocess_with_multiple_optional_encodings(self, mock_geo_get_config, mock_preprocessing_get_config, mock_geo_mapper):
+        """Test preprocessing with multiple optional encodings on different columns."""
+        config = {
+            "mappings": {"levels": {"E3": 0, "E4": 1}, "location_targets": {}},
+            "location_settings": {"max_distance_km": 50},
+            "model": {
+                "targets": ["BaseSalary"],
+                "quantiles": [0.5],
+                "features": [
+                    {"name": "Level_Enc", "monotone_constraint": 1},
+                    {"name": "Location_CostOfLiving", "monotone_constraint": 0},
+                    {"name": "Date_Normalized", "monotone_constraint": 0}
+                ],
+                "hyperparameters": {"training": {}, "cv": {}}
+            },
+            "feature_engineering": {
+                "ranked_cols": {"Level": "levels"}
+            },
+            "optional_encodings": {
+                "Location": {"type": "cost_of_living", "params": {}},
+                "Date": {"type": "normalize_recent", "params": {}}
+            }
+        }
+        mock_preprocessing_get_config.return_value = config
+        mock_geo_get_config.return_value = config
+        
+        mock_mapper = mock_geo_mapper.return_value
+        mock_mapper.get_zone.return_value = 1
+        
+        forecaster = QuantileForecaster(config=config)
+        result = forecaster._preprocess(self.df)
+        
+        # Should have all optional encoding features
+        self.assertIn("Location_CostOfLiving", result.columns)
+        self.assertIn("Date_Normalized", result.columns)
+        self.assertIn("Level_Enc", result.columns)
+    
+    @patch("src.xgboost.preprocessing.get_config")
+    @patch("src.utils.geo_utils.get_config")
+    def test_preprocess_without_optional_encodings(self, mock_geo_get_config, mock_preprocessing_get_config):
+        """Test that preprocessing works without optional encodings (backward compatibility)."""
+        config = {
+            "mappings": {"levels": {"E3": 0}, "location_targets": {}},
+            "location_settings": {"max_distance_km": 50},
+            "model": {
+                "targets": ["BaseSalary"],
+                "quantiles": [0.5],
+                "features": [
+                    {"name": "YearsOfExperience", "monotone_constraint": 1}
+                ],
+                "hyperparameters": {"training": {}, "cv": {}}
+            },
+            "feature_engineering": {
+                "ranked_cols": {"Level": "levels"}
+            }
+            # No optional_encodings field
+        }
+        mock_preprocessing_get_config.return_value = config
+        mock_geo_get_config.return_value = config
+        
+        forecaster = QuantileForecaster(config=config)
+        result = forecaster._preprocess(self.df)
+        
+        # Should still work and return configured features
+        self.assertIn("YearsOfExperience", result.columns)
+        # Should not have optional encoding features
+        self.assertNotIn("Location_CostOfLiving", result.columns)
+        self.assertNotIn("Date_Normalized", result.columns)

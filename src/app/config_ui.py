@@ -12,6 +12,7 @@ import pandas as pd
 import json
 import copy
 from typing import Dict, Any, Optional
+import pandas.api.types as pd_types
 
 from src.services.workflow_service import WorkflowService, get_workflow_providers
 from src.app.caching import load_data_cached
@@ -50,11 +51,26 @@ def render_workflow_wizard(df: pd.DataFrame, provider: str = "openai") -> Option
     st.markdown("---")
     
     if st.session_state["workflow_phase"] == "not_started":
+        preset_options = ["None", "salary"]
+        preset_key = "workflow_preset_selector"
+        if preset_key not in st.session_state:
+            st.session_state[preset_key] = "None"
+        
+        selected_preset = st.selectbox(
+            "Optional Preset Prompt (for domain-specific guidance)",
+            preset_options,
+            index=preset_options.index(st.session_state[preset_key]),
+            key=preset_key,
+            help="Select a preset prompt to provide domain-specific guidance to the AI agents"
+        )
+        
+        preset_value = None if selected_preset == "None" else selected_preset.lower()
+        
         if st.button("Start AI-Powered Configuration Wizard", type="primary"):
             with st.spinner("Initializing workflow and analyzing columns..."):
                 try:
                     service = WorkflowService(provider=provider)
-                    result = service.start_workflow(df)
+                    result = service.start_workflow(df, preset=preset_value)
                     st.session_state["workflow_service"] = service
                     st.session_state["workflow_result"] = result
                     st.session_state["workflow_phase"] = "classification"
@@ -107,6 +123,9 @@ def _render_classification_phase(service: WorkflowService, result: Dict[str, Any
     locations = data.get("locations", [])
     ignore = data.get("ignore", [])
     
+    # Get current optional encodings from workflow state
+    current_optional_encodings = service.workflow.current_state.get("optional_encodings", {}) if service.workflow else {}
+    
     # Build unified editor
     classification_data = []
     for col in all_columns:
@@ -140,6 +159,63 @@ def _render_classification_phase(service: WorkflowService, result: Dict[str, Any
         width='stretch'
     )
     
+    # Optional encodings section
+    st.markdown("**Optional Encodings (Advanced):**")
+    st.caption("Select additional encoding strategies for specific columns. These are optional enhancements.")
+    
+    optional_encodings_ui = {}
+    location_cols = [row["Column"] for _, row in edited_df.iterrows() if row["Role"] == "Location"]
+    date_cols = [row["Column"] for _, row in edited_df.iterrows() 
+                 if pd_types.is_datetime64_any_dtype(df[row["Column"]])]
+    
+    if location_cols:
+        with st.expander("Location Column Encodings", expanded=False):
+            for col in location_cols:
+                current_enc = current_optional_encodings.get(col, {}).get("type", "")
+                enc_display = "None"
+                if current_enc == "cost_of_living":
+                    enc_display = "Cost of Living"
+                elif current_enc == "metro_population":
+                    enc_display = "Metro Population"
+                
+                selected = st.selectbox(
+                    f"{col}",
+                    ["None", "Cost of Living", "Metro Population"],
+                    index=["None", "Cost of Living", "Metro Population"].index(enc_display),
+                    key=f"opt_enc_location_{col}"
+                )
+                if selected != "None":
+                    if selected == "Cost of Living":
+                        optional_encodings_ui[col] = {"type": "cost_of_living", "params": {}}
+                    elif selected == "Metro Population":
+                        optional_encodings_ui[col] = {"type": "metro_population", "params": {}}
+    
+    if date_cols:
+        with st.expander("Date Column Encodings", expanded=False):
+            for col in date_cols:
+                current_enc = current_optional_encodings.get(col, {}).get("type", "")
+                enc_display = "None"
+                if current_enc == "normalize_recent":
+                    enc_display = "Normalize Recent"
+                elif current_enc == "weight_recent":
+                    enc_display = "Weight Recent"
+                elif current_enc == "least_recent":
+                    enc_display = "Least Recent"
+                
+                selected = st.selectbox(
+                    f"{col}",
+                    ["None", "Normalize Recent", "Weight Recent", "Least Recent"],
+                    index=["None", "Normalize Recent", "Weight Recent", "Least Recent"].index(enc_display),
+                    key=f"opt_enc_date_{col}"
+                )
+                if selected != "None":
+                    if selected == "Normalize Recent":
+                        optional_encodings_ui[col] = {"type": "normalize_recent", "params": {}}
+                    elif selected == "Weight Recent":
+                        optional_encodings_ui[col] = {"type": "weight_recent", "params": {}}
+                    elif selected == "Least Recent":
+                        optional_encodings_ui[col] = {"type": "least_recent", "params": {}}
+    
     # Action buttons
     col1, col2, col3 = st.columns([1, 1, 2])
     
@@ -167,7 +243,8 @@ def _render_classification_phase(service: WorkflowService, result: Dict[str, Any
                 "targets": new_targets,
                 "features": new_features,
                 "locations": new_locations,
-                "ignore": new_ignore
+                "ignore": new_ignore,
+                "optional_encodings": optional_encodings_ui
             }
             
             with st.spinner("Processing feature encoding..."):
@@ -277,6 +354,69 @@ def _render_encoding_phase(service: WorkflowService, result: Dict[str, Any]) -> 
                 # Store updated mapping
                 st.session_state[f"encoding_mapping_{col}"] = new_mapping
     
+    # Optional encodings section (for review/edit)
+    st.markdown("**Optional Encodings (Review/Edit):**")
+    current_optional_encodings = service.workflow.current_state.get("optional_encodings", {}) if service.workflow else {}
+    
+    optional_encodings_ui = {}
+    encoded_cols = [row["Column"] for _, row in edited_enc_df.iterrows() if row["Column"]]
+    
+    # Get location and date columns from the encoding table
+    location_cols = [
+        col for col in encoded_cols 
+        if len(edited_enc_df[edited_enc_df["Column"] == col]) > 0 
+        and edited_enc_df[edited_enc_df["Column"] == col]["Encoding"].iloc[0] == "proximity"
+    ]
+    
+    # We need to check the original dataframe for date columns - but we don't have it here
+    # So we'll show optional encodings for any columns that have them set
+    if current_optional_encodings:
+        with st.expander("Edit Optional Encodings", expanded=False):
+            for col, enc_config in current_optional_encodings.items():
+                enc_type = enc_config.get("type", "")
+                enc_display = "None"
+                options = ["None"]
+                
+                if enc_type == "cost_of_living":
+                    enc_display = "Cost of Living"
+                    options = ["None", "Cost of Living", "Metro Population"]
+                elif enc_type == "metro_population":
+                    enc_display = "Metro Population"
+                    options = ["None", "Cost of Living", "Metro Population"]
+                elif enc_type == "normalize_recent":
+                    enc_display = "Normalize Recent"
+                    options = ["None", "Normalize Recent", "Weight Recent", "Least Recent"]
+                elif enc_type == "weight_recent":
+                    enc_display = "Weight Recent"
+                    options = ["None", "Normalize Recent", "Weight Recent", "Least Recent"]
+                elif enc_type == "least_recent":
+                    enc_display = "Least Recent"
+                    options = ["None", "Normalize Recent", "Weight Recent", "Least Recent"]
+                else:
+                    # Determine options based on encoding type
+                    if enc_type in ["cost_of_living", "metro_population"]:
+                        options = ["None", "Cost of Living", "Metro Population"]
+                    elif enc_type in ["normalize_recent", "weight_recent", "least_recent"]:
+                        options = ["None", "Normalize Recent", "Weight Recent", "Least Recent"]
+                
+                selected = st.selectbox(
+                    f"{col}",
+                    options,
+                    index=options.index(enc_display) if enc_display in options else 0,
+                    key=f"opt_enc_edit_{col}"
+                )
+                if selected != "None":
+                    if selected == "Cost of Living":
+                        optional_encodings_ui[col] = {"type": "cost_of_living", "params": {}}
+                    elif selected == "Metro Population":
+                        optional_encodings_ui[col] = {"type": "metro_population", "params": {}}
+                    elif selected == "Normalize Recent":
+                        optional_encodings_ui[col] = {"type": "normalize_recent", "params": {}}
+                    elif selected == "Weight Recent":
+                        optional_encodings_ui[col] = {"type": "weight_recent", "params": {}}
+                    elif selected == "Least Recent":
+                        optional_encodings_ui[col] = {"type": "least_recent", "params": {}}
+    
     # Action buttons
     col1, col2, col3 = st.columns([1, 1, 2])
     
@@ -305,7 +445,10 @@ def _render_encoding_phase(service: WorkflowService, result: Dict[str, Any]) -> 
                     "reasoning": row.get("Notes", "")
                 }
             
-            modifications = {"encodings": new_encodings}
+            modifications = {
+                "encodings": new_encodings,
+                "optional_encodings": optional_encodings_ui
+            }
             
             with st.spinner("Configuring model parameters..."):
                 result = service.confirm_encoding(modifications)

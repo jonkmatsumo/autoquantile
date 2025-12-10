@@ -48,8 +48,8 @@ class WorkflowService:
             logger.error(f"Failed to initialize LLM: {e}")
             raise
     
-    def start_workflow(self, df: pd.DataFrame, sample_size: int = 50) -> Dict[str, Any]:
-        """Start a new configuration workflow. Args: df (pd.DataFrame): Input DataFrame. sample_size (int): Rows to sample. Returns: Dict[str, Any]: Classification results."""
+    def start_workflow(self, df: pd.DataFrame, sample_size: int = 50, preset: Optional[str] = None) -> Dict[str, Any]:
+        """Start a new configuration workflow. Args: df (pd.DataFrame): Input DataFrame. sample_size (int): Rows to sample. preset (Optional[str]): Optional preset prompt name. Returns: Dict[str, Any]: Classification results."""
         logger.info(f"Starting workflow with {len(df)} rows, sampling {sample_size}")
         logger.debug(f"DataFrame columns: {df.columns.tolist()}")
         logger.debug(f"DataFrame dtypes: {df.dtypes.to_dict()}")
@@ -109,7 +109,8 @@ class WorkflowService:
                 df_json=df_json,
                 columns=columns,
                 dtypes=dtypes,
-                dataset_size=dataset_size
+                dataset_size=dataset_size,
+                preset=preset
             )
             logger.info("workflow.start() completed successfully")
             logger.debug(f"Current state keys: {list(self.current_state.keys())}")

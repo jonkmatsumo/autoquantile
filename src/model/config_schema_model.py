@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union, Literal
+from typing import Dict, List, Optional, Union, Literal, Any
 from pydantic import BaseModel, Field, root_validator, model_validator
 
 class Mappings(BaseModel):
@@ -26,3 +26,4 @@ class Config(BaseModel):
     mappings: Mappings = Field(default_factory=Mappings)
     location_settings: Dict[str, float] = Field(default_factory=lambda: {"max_distance_km": 50.0})
     model: ModelConfig = Field(default_factory=ModelConfig)
+    optional_encodings: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Optional encoding strategies for columns (e.g., cost_of_living for locations, normalize_recent for dates)")

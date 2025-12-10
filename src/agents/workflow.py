@@ -52,11 +52,13 @@ class WorkflowState(TypedDict, total=False):
     columns: List[str]
     dtypes: Dict[str, str]
     dataset_size: int
+    preset: Optional[str]  # Optional preset prompt name (e.g., "salary")
     
     # Phase 1: Column Classification
     column_classification: Dict[str, Any]
     classification_confirmed: bool
     location_columns: List[str]  # Extracted location columns
+    optional_encodings: Dict[str, Dict[str, Any]]  # Optional encoding selections per column
     
     # Phase 2: Feature Encoding
     feature_encodings: Dict[str, Any]
@@ -161,7 +163,8 @@ def classify_columns_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str,
             llm=llm,
             df_json=state["df_json"],
             columns=state["columns"],
-            dtypes=state["dtypes"]
+            dtypes=state["dtypes"],
+            preset=state.get("preset")
         )
         logger.info("run_column_classifier_sync completed successfully")
         logger.debug(f"Classification result keys: {list(result.keys()) if isinstance(result, dict) else 'not a dict'}")
@@ -186,6 +189,7 @@ def classify_columns_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str,
             "column_classification": result,
             "classification_confirmed": False,
             "location_columns": location_columns,
+            "optional_encodings": state.get("optional_encodings", {}),
             "correlation_data": correlation_data,
             "current_phase": "classification",
             "error": None
@@ -230,7 +234,8 @@ def encode_features_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str, 
             llm=llm,
             df_json=state["df_json"],
             features=features,
-            dtypes=state["dtypes"]
+            dtypes=state["dtypes"],
+            preset=state.get("preset")
         )
         
         # Automatically set proximity encoding for location columns
@@ -253,6 +258,7 @@ def encode_features_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str, 
         new_state = {
             "feature_encodings": result,
             "encodings_confirmed": False,
+            "optional_encodings": state.get("optional_encodings", {}),
             "current_phase": "encoding",
             "error": None
         }
@@ -295,11 +301,13 @@ def configure_model_node(state: WorkflowState, llm: BaseChatModel) -> Dict[str, 
             encodings=encodings,
             correlation_data=state.get("correlation_data"),
             column_stats=None,
-            dataset_size=state.get("dataset_size", 0)
+            dataset_size=state.get("dataset_size", 0),
+            preset=state.get("preset")
         )
         
         new_state = {
             "model_config": result,
+            "optional_encodings": state.get("optional_encodings", {}),
             "current_phase": "configuration",
             "error": None
         }
@@ -363,6 +371,9 @@ def build_final_config_node(state: WorkflowState) -> Dict[str, Any]:
         if loc_col not in feature_engineering["proximity_cols"]:
             feature_engineering["proximity_cols"].append(loc_col)
     
+    # Get optional encodings from state
+    optional_encodings = state.get("optional_encodings", {})
+    
     # Build final config structure
     final_config = {
         "mappings": mappings,
@@ -377,6 +388,7 @@ def build_final_config_node(state: WorkflowState) -> Dict[str, Any]:
             "sample_weight_k": 1.0,
             "hyperparameters": model_config.get("hyperparameters", {})
         },
+        "optional_encodings": optional_encodings,
         "_metadata": {
             "classification_reasoning": classification.get("reasoning", ""),
             "encoding_summary": encodings.get("summary", ""),
@@ -525,7 +537,7 @@ class ConfigWorkflow:
         self.thread_id = None
         self.current_state = None
     
-    def start(self, df_json: str, columns: List[str], dtypes: Dict[str, str], dataset_size: int) -> Dict[str, Any]:
+    def start(self, df_json: str, columns: List[str], dtypes: Dict[str, str], dataset_size: int, preset: Optional[str] = None) -> Dict[str, Any]:
         """
         Start the workflow with initial data.
         
@@ -536,6 +548,7 @@ class ConfigWorkflow:
             columns: List of column names.
             dtypes: Dict mapping column names to dtypes.
             dataset_size: Number of rows in the dataset.
+            preset: Optional preset prompt name (e.g., "salary").
             
         Returns:
             Current workflow state after classification.
@@ -548,6 +561,8 @@ class ConfigWorkflow:
             "columns": columns,
             "dtypes": dtypes,
             "dataset_size": dataset_size,
+            "preset": preset,
+            "optional_encodings": {},
             "classification_confirmed": False,
             "encodings_confirmed": False,
             "current_phase": "starting"
@@ -590,6 +605,9 @@ class ConfigWorkflow:
             # Also update location_columns if locations are in modifications
             if "locations" in modifications:
                 update_state["location_columns"] = modifications["locations"]
+            # Update optional_encodings if provided
+            if "optional_encodings" in modifications:
+                update_state["optional_encodings"] = modifications["optional_encodings"]
         
         # Update state and resume
         self.compiled.update_state(config, update_state)
@@ -626,6 +644,9 @@ class ConfigWorkflow:
             if "encodings" in current_encodings:
                 current_encodings["encodings"].update(modifications.get("encodings", {}))
             update_state["feature_encodings"] = current_encodings
+            # Update optional encodings if provided
+            if "optional_encodings" in modifications:
+                update_state["optional_encodings"] = modifications["optional_encodings"]
         
         # Update state and resume
         self.compiled.update_state(config, update_state)
