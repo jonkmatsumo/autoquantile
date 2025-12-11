@@ -3,8 +3,9 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Any, List, TYPE_CHECKING
 import time
+import asyncio
 import google.generativeai as genai
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 from openai import RateLimitError, APIError
 from src.utils.env_loader import get_env_var
 from src.utils.logger import get_logger
@@ -31,6 +32,11 @@ class LLMClient(ABC):
     def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
         """Generate text from the LLM. Args: prompt (str): User prompt. system_prompt (Optional[str]): System prompt. Returns: str: Generated text."""
         pass
+    
+    async def agenerate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        """Async generate text from the LLM. Default implementation uses sync method in executor. Args: prompt (str): User prompt. system_prompt (Optional[str]): System prompt. Returns: str: Generated text."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.generate, prompt, system_prompt)
 
 
 class OpenAIClient(LLMClient):
@@ -39,7 +45,14 @@ class OpenAIClient(LLMClient):
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY not found.")
         self.client = OpenAI(api_key=self.api_key)
+        self.async_client: Optional[AsyncOpenAI] = None
         self.model = model
+    
+    def _get_async_client(self) -> AsyncOpenAI:
+        """Get or create async OpenAI client. Returns: AsyncOpenAI: Async client instance."""
+        if self.async_client is None:
+            self.async_client = AsyncOpenAI(api_key=self.api_key)
+        return self.async_client
 
     def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
         """Generate text from OpenAI with retry logic. Args: prompt (str): User prompt. system_prompt (Optional[str]): System prompt. Returns: str: Generated text. Raises: Exception: If all retries fail."""
@@ -83,6 +96,50 @@ class OpenAIClient(LLMClient):
         if last_exception:
             raise last_exception
         raise RuntimeError("OpenAI generation failed: unknown error")
+    
+    async def agenerate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        """Async generate text from OpenAI with retry logic. Args: prompt (str): User prompt. system_prompt (Optional[str]): System prompt. Returns: str: Generated text. Raises: Exception: If all retries fail."""
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        backoff = INITIAL_BACKOFF
+        last_exception = None
+        async_client = self._get_async_client()
+        
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = await async_client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=0.0
+                )
+                if attempt > 0:
+                    logger.info(f"OpenAI async request succeeded on attempt {attempt + 1}")
+                content = response.choices[0].message.content
+                if content is None:
+                    raise ValueError("OpenAI returned empty response content")
+                return content
+            except (RateLimitError, APIError) as e:
+                last_exception = e
+                if attempt < MAX_RETRIES - 1:
+                    wait_time = min(backoff, MAX_BACKOFF)
+                    logger.warning(
+                        f"OpenAI async API error (attempt {attempt + 1}/{MAX_RETRIES}): {e}. "
+                        f"Retrying in {wait_time:.1f}s..."
+                    )
+                    await asyncio.sleep(wait_time)
+                    backoff *= BACKOFF_MULTIPLIER
+                else:
+                    logger.error(f"OpenAI async generation failed after {MAX_RETRIES} attempts: {e}")
+            except Exception as e:
+                logger.error(f"OpenAI async generation failed with unexpected error: {e}")
+                raise
+        
+        if last_exception:
+            raise last_exception
+        raise RuntimeError("OpenAI async generation failed: unknown error")
 
 
 class GeminiClient(LLMClient):
@@ -130,6 +187,49 @@ class GeminiClient(LLMClient):
         if last_exception:
             raise last_exception
         raise RuntimeError("Gemini generation failed: unknown error")
+    
+    async def agenerate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        """Async generate text using Gemini with retry logic. Args: prompt (str): User prompt. system_prompt (Optional[str]): System prompt. Returns: str: Generated text. Raises: Exception: If all retries fail."""
+        full_prompt = prompt
+        if system_prompt:
+            full_prompt = f"System: {system_prompt}\nUser: {prompt}"
+        
+        backoff = INITIAL_BACKOFF
+        last_exception = None
+        
+        for attempt in range(MAX_RETRIES):
+            try:
+                # Run synchronous Gemini call in executor
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None, 
+                    lambda: self.model.generate_content(full_prompt)
+                )
+                if attempt > 0:
+                    logger.info(f"Gemini async request succeeded on attempt {attempt + 1}")
+                return response.text
+            except Exception as e:
+                last_exception = e
+                error_str = str(e).lower()
+                # Retry on rate limits and server errors
+                if any(keyword in error_str for keyword in ["rate", "quota", "503", "500", "429"]):
+                    if attempt < MAX_RETRIES - 1:
+                        wait_time = min(backoff, MAX_BACKOFF)
+                        logger.warning(
+                            f"Gemini async API error (attempt {attempt + 1}/{MAX_RETRIES}): {e}. "
+                            f"Retrying in {wait_time:.1f}s..."
+                        )
+                        await asyncio.sleep(wait_time)
+                        backoff *= BACKOFF_MULTIPLIER
+                    else:
+                        logger.error(f"Gemini async generation failed after {MAX_RETRIES} attempts: {e}")
+                else:
+                    logger.error(f"Gemini async generation failed with non-retryable error: {e}")
+                    raise
+        
+        if last_exception:
+            raise last_exception
+        raise RuntimeError("Gemini async generation failed: unknown error")
 
 
 class DebugClient(LLMClient):

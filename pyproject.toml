@@ -47,7 +47,6 @@ dev = [
     "pytest",
     "pytest-cov>=4.0.0",
     "mypy>=1.0.0",
-    "types-python-dotenv",
     "ruff>=0.1.0",
 ]
 

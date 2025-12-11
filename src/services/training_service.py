@@ -2,8 +2,8 @@ from typing import Dict, Any, Optional, Callable
 import pandas as pd
 from datetime import datetime
 import uuid
+import asyncio
 import threading
-from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import mlflow
 from src.services.model_registry import SalaryForecasterWrapper, get_experiment_name
@@ -15,9 +15,9 @@ class TrainingService:
     
     def __init__(self):
         self.logger = get_logger(__name__)
-        self.executor = ThreadPoolExecutor(max_workers=1)
         self._jobs: Dict[str, Dict[str, Any]] = {}
         self._lock = threading.Lock()
+        self._background_tasks: set = set()
         self.logger.debug("Initialized TrainingService")
 
     def train_model(self, 
@@ -52,7 +52,7 @@ class TrainingService:
                            n_trials: int = 20,
                            additional_tag: Optional[str] = None,
                            dataset_name: str = "Unknown") -> str:
-        """Start training in a background thread. Args: data (pd.DataFrame): Training data. remove_outliers (bool): Remove outliers. do_tune (bool): Run tuning. n_trials (int): Tuning trials. additional_tag (Optional[str]): Additional tag. dataset_name (str): Dataset name. Returns: str: Job ID."""
+        """Start training in a background asyncio task. Args: data (pd.DataFrame): Training data. remove_outliers (bool): Remove outliers. do_tune (bool): Run tuning. n_trials (int): Tuning trials. additional_tag (Optional[str]): Additional tag. dataset_name (str): Dataset name. Returns: str: Job ID."""
         job_id = str(uuid.uuid4())
         
         with self._lock:
@@ -65,17 +65,62 @@ class TrainingService:
                 "result": None,
                 "error": None
             }
+        
+        # Run async task in background
+        # Use asyncio.ensure_future to handle both existing and new event loops
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If loop is already running, schedule task
+                task = asyncio.create_task(
+                    self._run_async_job(
+                        job_id, 
+                        data, 
+                        remove_outliers, 
+                        do_tune, 
+                        n_trials,
+                        additional_tag,
+                        dataset_name
+                    )
+                )
+            else:
+                # If loop exists but not running, create task
+                task = loop.create_task(
+                    self._run_async_job(
+                        job_id, 
+                        data, 
+                        remove_outliers, 
+                        do_tune, 
+                        n_trials,
+                        additional_tag,
+                        dataset_name
+                    )
+                )
+        except RuntimeError:
+            # No event loop, create new one and run in thread
+            import threading
+            def run_in_new_loop():
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                task = new_loop.create_task(
+                    self._run_async_job(
+                        job_id, 
+                        data, 
+                        remove_outliers, 
+                        do_tune, 
+                        n_trials,
+                        additional_tag,
+                        dataset_name
+                    )
+                )
+                new_loop.run_until_complete(task)
             
-        self.executor.submit(
-            self._run_async_job, 
-            job_id, 
-            data, 
-            remove_outliers, 
-            do_tune, 
-            n_trials,
-            additional_tag,
-            dataset_name
-        )
+            thread = threading.Thread(target=run_in_new_loop, daemon=True)
+            thread.start()
+            return job_id
+        
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
         
         return job_id
 
@@ -84,12 +129,12 @@ class TrainingService:
         with self._lock:
             return self._jobs.get(job_id)
 
-    def _run_async_job(self, job_id: str, data: pd.DataFrame, remove_outliers: bool, do_tune: bool, n_trials: int, additional_tag: Optional[str], dataset_name: str) -> None:
-        """Internal worker method. Args: job_id (str): Job identifier. data (pd.DataFrame): Training data. remove_outliers (bool): Remove outliers. do_tune (bool): Run tuning. n_trials (int): Tuning trials. additional_tag (Optional[str]): Additional tag. dataset_name (str): Dataset name. Returns: None."""
-        
+    async def _run_async_job(self, job_id: str, data: pd.DataFrame, remove_outliers: bool, do_tune: bool, n_trials: int, additional_tag: Optional[str], dataset_name: str) -> None:
+        """Internal async worker method. Args: job_id (str): Job identifier. data (pd.DataFrame): Training data. remove_outliers (bool): Remove outliers. do_tune (bool): Run tuning. n_trials (int): Tuning trials. additional_tag (Optional[str]): Additional tag. dataset_name (str): Dataset name. Returns: None."""
+        loop = asyncio.get_event_loop()
 
         def _async_callback(msg: str, data: Optional[Dict[str, Any]] = None) -> None:
-            """Async callback for training progress. Args: msg (str): Message. data (Optional[Dict[str, Any]]): Optional data. Returns: None."""
+            """Thread-safe callback for training progress. Args: msg (str): Message. data (Optional[Dict[str, Any]]): Optional data. Returns: None."""
             with self._lock:
                 if job_id in self._jobs:
                     self._jobs[job_id]["logs"].append(msg)
@@ -97,12 +142,13 @@ class TrainingService:
                         self._jobs[job_id]["history"].append(data)
                         if data.get("stage") == "cv_end":
                             score = data.get("best_score")
-                            self._jobs[job_id]["scores"].append(score)
+                            if score is not None:
+                                self._jobs[job_id]["scores"].append(score)
 
                             try:
                                 mlflow.log_metric("cv_score", score)
-                            except:
-                                pass # Ignore if no active run
+                            except Exception:
+                                pass  # Ignore if no active run
                     
                     self._jobs[job_id]["last_update"] = datetime.now()
 
@@ -138,11 +184,19 @@ class TrainingService:
                 if do_tune:
                     self.logger.info(f"Starting tuning for job {job_id}")
                     _async_callback(f"Starting tuning with {n_trials} trials...")
-                    best_params = forecaster.tune(data, n_trials=n_trials)
+                    # Run CPU-bound tuning in executor
+                    best_params = await loop.run_in_executor(
+                        None, 
+                        lambda: forecaster.tune(data, n_trials=n_trials)
+                    )
                     mlflow.log_params(best_params)
                     
                 _async_callback("Starting training...")
-                forecaster.train(data, callback=_async_callback, remove_outliers=remove_outliers)
+                # Run CPU-bound training in executor
+                await loop.run_in_executor(
+                    None,
+                    lambda: forecaster.train(data, callback=_async_callback, remove_outliers=remove_outliers)
+                )
                 
 
                 wrapper = SalaryForecasterWrapper(forecaster)
