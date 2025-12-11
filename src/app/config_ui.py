@@ -102,8 +102,19 @@ def render_workflow_wizard(df: pd.DataFrame, provider: str = "openai") -> Option
         return None
     
     if result.get("status") == "error":
-        st.error(f"Workflow error: {result.get('error')}")
-        if st.button("Restart Workflow"):
+        error_message = result.get('error', 'Unknown error occurred')
+        st.error(f"**Workflow Error**")
+        st.error(f"An error occurred during the configuration workflow: {error_message}")
+        
+        # Provide helpful context based on error type
+        if "API" in error_message or "key" in error_message.lower():
+            st.info("💡 **Tip**: Check that your LLM API keys are set correctly in your environment variables.")
+        elif "JSON" in error_message or "serialize" in error_message.lower():
+            st.info("💡 **Tip**: There may be an issue with your data format. Try uploading a different CSV file.")
+        elif "validation" in error_message.lower() or "validate" in error_message.lower():
+            st.info("💡 **Tip**: Check that your data contains the expected columns and data types.")
+        
+        if st.button("🔄 Restart Workflow"):
             _reset_workflow_state()
             st.rerun()
         return None

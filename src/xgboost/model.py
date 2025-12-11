@@ -133,8 +133,8 @@ class QuantileForecaster:
         
         return df_clean, removed_count
 
-    def train(self, df: pd.DataFrame, callback: Optional[Callable[[str, Optional[Dict[str, Any]]], None]] = None, remove_outliers: bool = False) -> None:
-        """Trains the XGBoost models. Args: df (pd.DataFrame): Training data. callback (Optional[Callable]): Optional callback for status updates. remove_outliers (bool): If True, applies IQR outlier removal before training. Returns: None."""
+    def _prepare_training_data(self, df: pd.DataFrame, remove_outliers: bool, callback: Optional[Callable[[str, Optional[Dict[str, Any]]], None]]) -> pd.DataFrame:
+        """Prepare training data with optional outlier removal. Args: df (pd.DataFrame): Training data. remove_outliers (bool): Remove outliers. callback (Optional[Callable]): Progress callback. Returns: pd.DataFrame: Prepared DataFrame."""
         if remove_outliers:
             if callback:
                 callback("Preprocessing: Removing outliers...", {"stage": "preprocess"})
@@ -147,6 +147,78 @@ class QuantileForecaster:
                 callback(msg, {"stage": "preprocess_result", "removed": removed})
             else:
                 self.logger.info(msg)
+        return df
+    
+    def _get_training_params(self, quantile: float, monotone_constraints: str) -> Dict[str, Any]:
+        """Get training parameters for a specific quantile. Args: quantile (float): Quantile value. monotone_constraints (str): Monotonic constraints string. Returns: Dict[str, Any]: Training parameters."""
+        hyperparams = self.model_config.get("hyperparameters", {})
+        train_params_config = hyperparams.get("training", {
+            "objective": "reg:quantileerror",
+            "tree_method": "hist",
+            "verbosity": 0
+        })
+        
+        params = train_params_config.copy()
+        params.update({
+            "quantile_alpha": quantile,
+            "monotone_constraints": monotone_constraints,
+        })
+        return params
+    
+    def _get_cv_params(self) -> Dict[str, Any]:
+        """Get cross-validation parameters. Returns: Dict[str, Any]: CV parameters."""
+        hyperparams = self.model_config.get("hyperparameters", {})
+        return hyperparams.get("cv", {
+            "num_boost_round": 100,
+            "nfold": 5,
+            "early_stopping_rounds": 10,
+            "verbose_eval": False
+        })
+    
+    def _train_single_model(self, model_name: str, dtrain: xgb.DMatrix, params: Dict[str, Any], cv_params: Dict[str, Any], callback: Optional[Callable[[str, Optional[Dict[str, Any]]], None]]) -> xgb.Booster:
+        """Train a single quantile model. Args: model_name (str): Model name. dtrain (xgb.DMatrix): Training data. params (Dict[str, Any]): Training parameters. cv_params (Dict[str, Any]): CV parameters. callback (Optional[Callable]): Progress callback. Returns: xgb.Booster: Trained model."""
+        if callback:
+            callback(f"Training {model_name}...", {"stage": "start", "model_name": model_name})
+        else:
+            self.logger.info(f"Training {model_name}...")
+        
+        if callback:
+            callback(f"Running Cross-Validation...", {"stage": "cv_start"})
+        else:
+            self.logger.debug(f"Running Cross-Validation for {model_name}...")
+        
+        cv_results = xgb.cv(
+            params,
+            dtrain,
+            num_boost_round=cv_params.get("num_boost_round", 100),
+            nfold=cv_params.get("nfold", 5),
+            early_stopping_rounds=cv_params.get("early_stopping_rounds", 10),
+            metrics={'quantile'},
+            seed=42,
+            verbose_eval=cv_params.get("verbose_eval", False)
+        )
+        
+        metric_name = 'test-quantile-mean'
+        best_round, best_score = self._analyze_cv_results(cv_results, metric_name)
+        
+        if callback:
+            data = {
+                "stage": "cv_end",
+                "model_name": model_name,
+                "best_round": best_round,
+                "best_score": best_score,
+                "metric_name": metric_name
+            }
+            callback(f"Best Round: {best_round}, Score: {best_score:.4f}", data)
+        else:
+            self.logger.info(f"  Optimal rounds: {best_round}, Best {metric_name}: {best_score:.4f}")
+
+        model = xgb.train(params, dtrain, num_boost_round=best_round)
+        return model
+    
+    def train(self, df: pd.DataFrame, callback: Optional[Callable[[str, Optional[Dict[str, Any]]], None]] = None, remove_outliers: bool = False) -> None:
+        """Trains the XGBoost models. Args: df (pd.DataFrame): Training data. callback (Optional[Callable]): Optional callback for status updates. remove_outliers (bool): If True, applies IQR outlier removal before training. Returns: None."""
+        df = self._prepare_training_data(df, remove_outliers, callback)
                 
         X = self._preprocess(df)
         weights = self.weighter.transform(df)
@@ -154,35 +226,17 @@ class QuantileForecaster:
         constraints = [f["monotone_constraint"] for f in self.features_config]
         monotone_constraints = str(tuple(constraints))
         
-        hyperparams = self.model_config.get("hyperparameters", {})
-        train_params_config = hyperparams.get("training", {
-            "objective": "reg:quantileerror",
-            "tree_method": "hist",
-            "verbosity": 0
-        })
-        cv_params_config = hyperparams.get("cv", {
-            "num_boost_round": 100,
-            "nfold": 5,
-            "early_stopping_rounds": 10,
-            "verbose_eval": False
-        })
+        cv_params = self._get_cv_params()
 
         for target in self.targets:
             y = df[target]
+            dtrain = xgb.DMatrix(X, label=y, weight=weights)
             
             for q in self.quantiles:
                 model_name = f"{target}_p{int(q*100)}"
-                
-                if callback:
-                    callback(f"Training {model_name}...", {"stage": "start", "model_name": model_name})
-                else:
-                    self.logger.info(f"Training {model_name}...")
-                
-                params = train_params_config.copy()
-                params.update({
-                    "quantile_alpha": q,
-                    "monotone_constraints": monotone_constraints,
-                })
+                params = self._get_training_params(q, monotone_constraints)
+                model = self._train_single_model(model_name, dtrain, params, cv_params, callback)
+                self.models[model_name] = model
                 
                 dtrain = xgb.DMatrix(X, label=y, weight=weights)
                 

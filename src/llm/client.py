@@ -2,10 +2,18 @@
 
 from abc import ABC, abstractmethod
 from typing import Optional, Any, List, TYPE_CHECKING
+import time
 import google.generativeai as genai
 from openai import OpenAI
+from openai import RateLimitError, APIError
 from src.utils.env_loader import get_env_var
 from src.utils.logger import get_logger
+
+# Retry configuration
+MAX_RETRIES = 3
+INITIAL_BACKOFF = 1.0
+MAX_BACKOFF = 60.0
+BACKOFF_MULTIPLIER = 2.0
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
@@ -34,21 +42,47 @@ class OpenAIClient(LLMClient):
         self.model = model
 
     def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        """Generate text from OpenAI with retry logic. Args: prompt (str): User prompt. system_prompt (Optional[str]): System prompt. Returns: str: Generated text. Raises: Exception: If all retries fail."""
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.0
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            logger.error(f"OpenAI generation failed: {e}")
-            raise
+        backoff = INITIAL_BACKOFF
+        last_exception = None
+        
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=0.0
+                )
+                if attempt > 0:
+                    logger.info(f"OpenAI request succeeded on attempt {attempt + 1}")
+                content = response.choices[0].message.content
+                if content is None:
+                    raise ValueError("OpenAI returned empty response content")
+                return content
+            except (RateLimitError, APIError) as e:
+                last_exception = e
+                if attempt < MAX_RETRIES - 1:
+                    wait_time = min(backoff, MAX_BACKOFF)
+                    logger.warning(
+                        f"OpenAI API error (attempt {attempt + 1}/{MAX_RETRIES}): {e}. "
+                        f"Retrying in {wait_time:.1f}s..."
+                    )
+                    time.sleep(wait_time)
+                    backoff *= BACKOFF_MULTIPLIER
+                else:
+                    logger.error(f"OpenAI generation failed after {MAX_RETRIES} attempts: {e}")
+            except Exception as e:
+                logger.error(f"OpenAI generation failed with unexpected error: {e}")
+                raise
+        
+        if last_exception:
+            raise last_exception
+        raise RuntimeError("OpenAI generation failed: unknown error")
 
 
 class GeminiClient(LLMClient):
@@ -60,17 +94,42 @@ class GeminiClient(LLMClient):
         self.model = genai.GenerativeModel(model)
 
     def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        """Generate text using Gemini. Args: prompt (str): User prompt. system_prompt (Optional[str]): System prompt. Returns: str: Generated text."""
+        """Generate text using Gemini with retry logic. Args: prompt (str): User prompt. system_prompt (Optional[str]): System prompt. Returns: str: Generated text. Raises: Exception: If all retries fail."""
         full_prompt = prompt
         if system_prompt:
             full_prompt = f"System: {system_prompt}\nUser: {prompt}"
-            
-        try:
-            response = self.model.generate_content(full_prompt)
-            return response.text
-        except Exception as e:
-            logger.error(f"Gemini generation failed: {e}")
-            raise
+        
+        backoff = INITIAL_BACKOFF
+        last_exception = None
+        
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = self.model.generate_content(full_prompt)
+                if attempt > 0:
+                    logger.info(f"Gemini request succeeded on attempt {attempt + 1}")
+                return response.text
+            except Exception as e:
+                last_exception = e
+                error_str = str(e).lower()
+                # Retry on rate limits and server errors
+                if any(keyword in error_str for keyword in ["rate", "quota", "503", "500", "429"]):
+                    if attempt < MAX_RETRIES - 1:
+                        wait_time = min(backoff, MAX_BACKOFF)
+                        logger.warning(
+                            f"Gemini API error (attempt {attempt + 1}/{MAX_RETRIES}): {e}. "
+                            f"Retrying in {wait_time:.1f}s..."
+                        )
+                        time.sleep(wait_time)
+                        backoff *= BACKOFF_MULTIPLIER
+                    else:
+                        logger.error(f"Gemini generation failed after {MAX_RETRIES} attempts: {e}")
+                else:
+                    logger.error(f"Gemini generation failed with non-retryable error: {e}")
+                    raise
+        
+        if last_exception:
+            raise last_exception
+        raise RuntimeError("Gemini generation failed: unknown error")
 
 
 class DebugClient(LLMClient):

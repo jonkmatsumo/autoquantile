@@ -27,45 +27,23 @@ class WorkflowService:
             logger.error(f"Failed to initialize LLM: {e}")
             raise
     
-    def start_workflow(self, df: pd.DataFrame, sample_size: int = 50, preset: Optional[str] = None) -> Dict[str, Any]:
-        """Start a new configuration workflow. Args: df (pd.DataFrame): Input DataFrame. sample_size (int): Rows to sample. preset (Optional[str]): Optional preset prompt name. Returns: Dict[str, Any]: Classification results."""
-        logger.info(f"Starting workflow with {len(df)} rows, sampling {sample_size}")
-        logger.debug(f"DataFrame columns: {df.columns.tolist()}")
-        logger.debug(f"DataFrame dtypes: {df.dtypes.to_dict()}")
+    def _validate_dataframe(self, df: pd.DataFrame) -> None:
+        """Validate DataFrame before processing. Args: df (pd.DataFrame): DataFrame to validate. Returns: None. Raises: ValueError: If DataFrame is invalid."""
+        if df is None:
+            raise ValueError("DataFrame cannot be None")
+        if df.empty:
+            raise ValueError("DataFrame cannot be empty")
+        if len(df.columns) == 0:
+            raise ValueError("DataFrame must have at least one column")
+    
+    def _prepare_workflow_input(self, df: pd.DataFrame, sample_size: int) -> tuple[str, list[str], Dict[str, str], int]:
+        """Prepare and validate workflow input data. Args: df (pd.DataFrame): Input DataFrame. sample_size (int): Rows to sample. Returns: tuple[str, list[str], Dict[str, str], int]: (df_json, columns, dtypes, dataset_size). Raises: ValueError: If data preparation fails."""
+        self._validate_dataframe(df)
         
         sample_df = df.head(sample_size)
         logger.debug(f"Sampled DataFrame shape: {sample_df.shape}")
         
-        try:
-            df_json = sample_df.to_json(orient='columns', date_format='iso')
-            logger.debug(f"Generated df_json length: {len(df_json)} characters")
-            logger.debug(f"df_json preview (first 200 chars): {df_json[:200]}")
-            
-            from src.utils.json_utils import parse_df_json_safely
-            
-            try:
-                parsed = parse_df_json_safely(df_json)
-                logger.debug(f"df_json is valid JSON, parsed type: {type(parsed)}")
-                if isinstance(parsed, dict):
-                    logger.debug(f"JSON has {len(parsed)} top-level keys: {list(parsed.keys())[:10]}")
-                    logger.debug(f"df_json format validated successfully - can be parsed by tools")
-            except ValueError as json_err:
-                logger.error(f"df_json validation failed: {json_err}")
-                logger.error(f"df_json content (first 500 chars): {df_json[:500]}")
-                logger.error(f"df_json content (last 200 chars): {df_json[-200:]}")
-                logger.warning("Attempting alternative JSON serialization...")
-                try:
-                    df_json = sample_df.to_json(orient='records', date_format='iso')
-                    parse_df_json_safely(df_json)  # Validate with normalization utility
-                    logger.info("Alternative serialization (orient='records') succeeded and validated")
-                except Exception as alt_err:
-                    logger.error(f"Alternative serialization also failed: {alt_err}")
-                    raise ValueError(f"Failed to serialize and validate DataFrame to JSON: {json_err}") from json_err
-            
-        except Exception as e:
-            logger.error(f"Failed to prepare DataFrame JSON: {e}", exc_info=True)
-            raise
-        
+        df_json = self._serialize_dataframe(sample_df)
         columns = df.columns.tolist()
         dtypes = {col: str(df[col].dtype) for col in columns}
         dataset_size = len(df)
@@ -73,12 +51,57 @@ class WorkflowService:
         logger.info(f"Prepared workflow input: {len(columns)} columns, {dataset_size} total rows")
         logger.debug(f"Column dtypes: {dtypes}")
         
+        return df_json, columns, dtypes, dataset_size
+    
+    def _serialize_dataframe(self, df: pd.DataFrame) -> str:
+        """Serialize DataFrame to JSON with validation and fallback. Args: df (pd.DataFrame): DataFrame to serialize. Returns: str: JSON string. Raises: ValueError: If serialization fails."""
+        from src.utils.json_utils import parse_df_json_safely
+        
+        try:
+            df_json = df.to_json(orient='columns', date_format='iso')
+            logger.debug(f"Generated df_json length: {len(df_json)} characters")
+            
+            # Validate JSON can be parsed
+            parsed = parse_df_json_safely(df_json)
+            logger.debug(f"df_json validated successfully")
+            return df_json
+        except ValueError as json_err:
+            logger.warning(f"Primary serialization failed, trying alternative: {json_err}")
+            try:
+                df_json = df.to_json(orient='records', date_format='iso')
+                parse_df_json_safely(df_json)
+                logger.info("Alternative serialization (orient='records') succeeded")
+                return df_json
+            except Exception as alt_err:
+                error_msg = (
+                    f"Failed to serialize DataFrame to JSON. "
+                    f"Primary error: {json_err}. "
+                    f"Alternative error: {alt_err}. "
+                    f"Please check your data for unsupported types or encoding issues."
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg) from json_err
+    
+    def start_workflow(self, df: pd.DataFrame, sample_size: int = 50, preset: Optional[str] = None) -> Dict[str, Any]:
+        """Start a new configuration workflow. Args: df (pd.DataFrame): Input DataFrame. sample_size (int): Rows to sample. preset (Optional[str]): Optional preset prompt name. Returns: Dict[str, Any]: Classification results. Raises: ValueError: If data validation fails. RuntimeError: If workflow initialization fails."""
+        logger.info(f"Starting workflow with {len(df)} rows, sampling {sample_size}")
+        logger.debug(f"DataFrame columns: {df.columns.tolist()}")
+        logger.debug(f"DataFrame dtypes: {df.dtypes.to_dict()}")
+        
+        try:
+            df_json, columns, dtypes, dataset_size = self._prepare_workflow_input(df, sample_size)
+        except ValueError as e:
+            error_msg = f"Data preparation failed: {str(e)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg) from e
+        
         try:
             self.workflow = ConfigWorkflow(self.llm)
             logger.debug("ConfigWorkflow instance created")
         except Exception as e:
-            logger.error(f"Failed to create ConfigWorkflow: {e}", exc_info=True)
-            raise
+            error_msg = f"Failed to initialize workflow: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            raise RuntimeError(error_msg) from e
         
         try:
             logger.info("Calling workflow.start()...")
@@ -89,7 +112,7 @@ class WorkflowService:
                 dataset_size=dataset_size,
                 preset=preset
             )
-            logger.info("workflow.start() completed successfully")
+            logger.info("Workflow started successfully")
             logger.debug(f"Current state keys: {list(self.current_state.keys())}")
             
             error_value = self.current_state.get("error")

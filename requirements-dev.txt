@@ -5,6 +5,7 @@
 
 # Testing
 pytest>=7.0.0,<8.0.0
+pytest-cov>=4.0.0,<5.0.0
 
 # Type checking
 mypy>=1.0.0,<2.0.0

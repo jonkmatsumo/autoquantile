@@ -2,6 +2,11 @@ import json
 import os
 from typing import Optional, Dict, Any
 
+from src.model.config_schema_model import Config
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 _CONFIG: Optional[Dict[str, Any]] = None
 
 def load_config(config_path: str = "config.json") -> Dict[str, Any]:
@@ -18,9 +23,19 @@ def load_config(config_path: str = "config.json") -> Dict[str, Any]:
         raise FileNotFoundError(f"Config file not found at {config_path}")
 
     with open(config_path, "r") as f:
-        config = json.load(f)
+        config_dict = json.load(f)
+    
+    try:
+        # Validate using Pydantic model
+        config_model = Config(**config_dict)
+        config = config_model.model_dump()
+        logger.debug("Config validated successfully using Pydantic model")
+    except Exception as e:
+        # Fallback to basic validation for backward compatibility
+        logger.warning(f"Pydantic validation failed, using basic validation: {e}")
+        _validate_config(config_dict)
+        config = config_dict
         
-    _validate_config(config)
     _CONFIG = config
         
     return _CONFIG
