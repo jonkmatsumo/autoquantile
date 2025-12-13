@@ -3,22 +3,29 @@ from typing import Any, Dict, Optional, Union
 
 import pandas as pd
 
-from src.utils.config_loader import get_config
+from src.utils.geo_utils import GeoMapper
 
 
 class RankedCategoryEncoder:
     """Maps ordinal categorical values to integers based on a provided mapping."""
 
     def __init__(
-        self, mapping: Optional[Dict[str, int]] = None, config_key: Optional[str] = None
+        self,
+        mapping: Optional[Dict[str, int]] = None,
+        config: Optional[Dict[str, Any]] = None,
+        config_key: Optional[str] = None,
     ) -> None:
-        """Initializes encoder. Args: mapping (Optional[Dict[str, int]]): Direct mapping dictionary. config_key (Optional[str]): Key in config['mappings'] to load mapping from."""
+        """Initializes encoder. Args: mapping (Optional[Dict[str, int]]): Direct mapping dictionary. config (Optional[Dict[str, Any]]): Configuration dictionary. config_key (Optional[str]): Key in config['mappings'] to load mapping from. Returns: None. Raises: ValueError: If neither mapping nor (config and config_key) are provided."""
         if mapping is not None:
             self.mapping = mapping
-        elif config_key is not None:
-            config = get_config()
+        elif config is not None and config_key is not None:
             self.mapping = config.get("mappings", {}).get(config_key, {})
         else:
+            if config_key is not None:
+                raise ValueError(
+                    f"config_key '{config_key}' provided but config is None. "
+                    "Please provide config parameter when using config_key."
+                )
             self.mapping = {}
 
     def fit(self, X: Any, y: Optional[Any] = None) -> "RankedCategoryEncoder":
@@ -32,14 +39,12 @@ class RankedCategoryEncoder:
         return pd.Series(X).map(self.mapping).fillna(-1).astype(int)
 
 
-from src.utils.geo_utils import GeoMapper
-
-
 class ProximityEncoder:
     """Maps locations to Cost Zones based on proximity to target cities."""
 
-    def __init__(self) -> None:
-        self.mapper = GeoMapper()
+    def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
+        """Initialize ProximityEncoder. Args: config (Optional[Dict[str, Any]]): Configuration dictionary. Returns: None."""
+        self.mapper = GeoMapper(config=config)
 
     def fit(self, X: Any, y: Optional[Any] = None) -> "ProximityEncoder":
         """Fits the encoder (no-op). Args: X (Any): Input data. y (Optional[Any]): Target data. Returns: ProximityEncoder: self."""
@@ -63,17 +68,12 @@ class SampleWeighter:
 
     def __init__(
         self,
-        k: Optional[float] = None,
+        k: float = 1.0,
         ref_date: Optional[Union[str, datetime]] = None,
         date_col: str = "Date",
     ) -> None:
-        """Initializes the weighter. Args: k (Optional[float]): Decay parameter. If None, loads from config. ref_date (Optional[Union[str, datetime]]): Reference date. Defaults to now. date_col (str): Column name for date if dataframe is passed. Defaults to "Date"."""
-        if k is None:
-            config = get_config()
-            self.k = config["model"].get("sample_weight_k", 1.0)
-        else:
-            self.k = k
-
+        """Initializes the weighter. Args: k (float): Decay parameter. Defaults to 1.0. ref_date (Optional[Union[str, datetime]]): Reference date. Defaults to now. date_col (str): Column name for date if dataframe is passed. Defaults to "Date"."""
+        self.k = k
         self.ref_date = pd.to_datetime(ref_date) if ref_date else datetime.now()
         self.date_col = date_col
 
@@ -109,8 +109,9 @@ class SampleWeighter:
 class CostOfLivingEncoder:
     """Maps locations to cost of living tiers using the same proximity-based approach as ProximityEncoder."""
 
-    def __init__(self) -> None:
-        self.mapper = GeoMapper()
+    def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
+        """Initialize CostOfLivingEncoder. Args: config (Optional[Dict[str, Any]]): Configuration dictionary. Returns: None."""
+        self.mapper = GeoMapper(config=config)
 
     def fit(self, X: Any, y: Optional[Any] = None) -> "CostOfLivingEncoder":
         """Fits the encoder (no-op). Args: X (Any): Input data. y (Optional[Any]): Target data. Returns: CostOfLivingEncoder: self."""
@@ -132,8 +133,9 @@ class CostOfLivingEncoder:
 class MetroPopulationEncoder:
     """Maps locations to metro area population values using a placeholder heuristic based on proximity zones."""
 
-    def __init__(self) -> None:
-        self.mapper = GeoMapper()
+    def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
+        """Initialize MetroPopulationEncoder. Args: config (Optional[Dict[str, Any]]): Configuration dictionary. Returns: None."""
+        self.mapper = GeoMapper(config=config)
         self.population_map = {1: 5000000, 2: 2000000, 3: 500000, 4: 100000}
 
     def fit(self, X: Any, y: Optional[Any] = None) -> "MetroPopulationEncoder":

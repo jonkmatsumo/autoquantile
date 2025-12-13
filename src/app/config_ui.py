@@ -779,7 +779,7 @@ def _reset_workflow_state() -> None:
 
 
 def render_save_load_controls(current_config_state: Dict[str, Any]) -> None:
-    """Renders Save/Load controls."""
+    """Renders Save/Load controls. JSON export only (for user convenience), loading is deprecated. Args: current_config_state (Dict[str, Any]): Current configuration. Returns: None."""
     st.markdown("---")
     st.subheader("Config Management")
 
@@ -789,18 +789,14 @@ def render_save_load_controls(current_config_state: Dict[str, Any]) -> None:
         data=config_json,
         file_name="config.json",
         mime="application/json",
+        help="Download configuration as JSON file for backup or reference. Note: JSON-based config loading has been deprecated. Use the AI-Powered Configuration Wizard to generate configurations.",
     )
 
-    uploaded_file = st.file_uploader("Load Config JSON", type=["json"], key="config_loader")
-    if uploaded_file is not None:
-        try:
-            loaded_config = json.load(uploaded_file)
-            if st.session_state.get("loaded_config_content") != loaded_config:
-                st.session_state["loaded_config_content"] = loaded_config
-                st.session_state["config_override"] = loaded_config
-                st.rerun()
-        except json.JSONDecodeError:
-            st.error("Invalid JSON file.")
+    st.info(
+        "💡 **Note**: JSON-based configuration loading has been removed. "
+        "All configurations must be generated using the AI-Powered Configuration Wizard above. "
+        "You can download your configuration as JSON for backup or reference."
+    )
 
 
 def render_ranked_mappings_section(config: Dict[str, Any]) -> None:

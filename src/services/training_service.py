@@ -26,11 +26,16 @@ class TrainingService:
     def train_model(
         self,
         data: pd.DataFrame,
+        config: Dict[str, Any],
         remove_outliers: bool = True,
         callback: Optional[Callable[[str, Optional[Dict[str, Any]]], None]] = None,
-        config: Optional[Dict[str, Any]] = None,
     ) -> SalaryForecaster:
-        """Synchronous training (blocking). Args: data (pd.DataFrame): Training data. remove_outliers (bool): Remove outliers. callback (Optional[Callable]): Progress callback. config (Optional[Dict[str, Any]]): Optional config dict. Returns: SalaryForecaster: Trained model."""
+        """Synchronous training (blocking). Args: data (pd.DataFrame): Training data. config (Dict[str, Any]): Required configuration dictionary. remove_outliers (bool): Remove outliers. callback (Optional[Callable]): Progress callback. Returns: SalaryForecaster: Trained model. Raises: ValueError: If config is missing or invalid."""
+        if not config:
+            raise ValueError(
+                "Config is required. Generate config using WorkflowService first. "
+                "See DESIGN_LLM_ONLY_CONFIG.md for migration guide."
+            )
         forecaster = SalaryForecaster(config=config)
         if callback:
             callback("Starting training...", None)
@@ -40,11 +45,17 @@ class TrainingService:
     def tune_model(
         self,
         data: pd.DataFrame,
+        config: Dict[str, Any],
         n_trials: int = 20,
         callback: Optional[Callable[[str, Optional[Dict[str, Any]]], None]] = None,
     ) -> Dict[str, Any]:
-        """Synchronous tuning (blocking). Args: data (pd.DataFrame): Training data. n_trials (int): Number of trials. callback (Optional[Callable]): Progress callback. Returns: Dict[str, Any]: Best hyperparameters."""
-        forecaster = SalaryForecaster()
+        """Synchronous tuning (blocking). Args: data (pd.DataFrame): Training data. config (Dict[str, Any]): Required configuration dictionary. n_trials (int): Number of trials. callback (Optional[Callable]): Progress callback. Returns: Dict[str, Any]: Best hyperparameters. Raises: ValueError: If config is missing or invalid."""
+        if not config:
+            raise ValueError(
+                "Config is required. Generate config using WorkflowService first. "
+                "See DESIGN_LLM_ONLY_CONFIG.md for migration guide."
+            )
+        forecaster = SalaryForecaster(config=config)
         if callback:
             callback(f"Starting tuning with {n_trials} trials...", None)
         best_params = forecaster.tune(data, n_trials=n_trials)
@@ -53,13 +64,19 @@ class TrainingService:
     def start_training_async(
         self,
         data: pd.DataFrame,
+        config: Dict[str, Any],
         remove_outliers: bool = True,
         do_tune: bool = False,
         n_trials: int = 20,
         additional_tag: Optional[str] = None,
         dataset_name: str = "Unknown",
     ) -> str:
-        """Start training in a background asyncio task. Args: data (pd.DataFrame): Training data. remove_outliers (bool): Remove outliers. do_tune (bool): Run tuning. n_trials (int): Tuning trials. additional_tag (Optional[str]): Additional tag. dataset_name (str): Dataset name. Returns: str: Job ID."""
+        """Start training in a background asyncio task. Args: data (pd.DataFrame): Training data. config (Dict[str, Any]): Required configuration dictionary. remove_outliers (bool): Remove outliers. do_tune (bool): Run tuning. n_trials (int): Tuning trials. additional_tag (Optional[str]): Additional tag. dataset_name (str): Dataset name. Returns: str: Job ID. Raises: ValueError: If config is missing or invalid."""
+        if not config:
+            raise ValueError(
+                "Config is required. Generate config using WorkflowService first. "
+                "See DESIGN_LLM_ONLY_CONFIG.md for migration guide."
+            )
         job_id = str(uuid.uuid4())
 
         with self._lock:
@@ -83,6 +100,7 @@ class TrainingService:
                     self._run_async_job(
                         job_id,
                         data,
+                        config,
                         remove_outliers,
                         do_tune,
                         n_trials,
@@ -96,6 +114,7 @@ class TrainingService:
                     self._run_async_job(
                         job_id,
                         data,
+                        config,
                         remove_outliers,
                         do_tune,
                         n_trials,
@@ -114,6 +133,7 @@ class TrainingService:
                     self._run_async_job(
                         job_id,
                         data,
+                        config,
                         remove_outliers,
                         do_tune,
                         n_trials,
@@ -141,13 +161,14 @@ class TrainingService:
         self,
         job_id: str,
         data: pd.DataFrame,
+        config: Dict[str, Any],
         remove_outliers: bool,
         do_tune: bool,
         n_trials: int,
         additional_tag: Optional[str],
         dataset_name: str,
     ) -> None:
-        """Internal async worker method. Args: job_id (str): Job identifier. data (pd.DataFrame): Training data. remove_outliers (bool): Remove outliers. do_tune (bool): Run tuning. n_trials (int): Tuning trials. additional_tag (Optional[str]): Additional tag. dataset_name (str): Dataset name. Returns: None."""
+        """Internal async worker method. Args: job_id (str): Job identifier. data (pd.DataFrame): Training data. config (Dict[str, Any]): Required configuration dictionary. remove_outliers (bool): Remove outliers. do_tune (bool): Run tuning. n_trials (int): Tuning trials. additional_tag (Optional[str]): Additional tag. dataset_name (str): Dataset name. Returns: None."""
         loop = asyncio.get_event_loop()
 
         def _async_callback(msg: str, data: Optional[Dict[str, Any]] = None) -> None:
@@ -200,7 +221,7 @@ class TrainingService:
                     }
                 )
 
-                forecaster = SalaryForecaster()
+                forecaster = SalaryForecaster(config=config)
 
                 if do_tune:
                     self.logger.info(f"Starting tuning for job {job_id}")

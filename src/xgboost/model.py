@@ -2,9 +2,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import optuna
 import pandas as pd
+from pydantic import ValidationError
 
 import xgboost as xgb
-from src.utils.config_loader import get_config
+from src.model.config_schema_model import Config
 from src.utils.logger import get_logger
 from src.xgboost.preprocessing import (
     CostOfLivingEncoder,
@@ -17,15 +18,28 @@ from src.xgboost.preprocessing import (
 
 
 class QuantileForecaster:
-    def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, config: Dict[str, Any]) -> None:
+        """Initialize QuantileForecaster with required configuration. Args: config (Dict[str, Any]): Configuration dictionary. Returns: None. Raises: ValueError: If config is missing or invalid."""
+        if not config:
+            raise ValueError(
+                "Config is required. Generate config using WorkflowService first. "
+                "See DESIGN_LLM_ONLY_CONFIG.md for migration guide."
+            )
+
         self.logger = get_logger(__name__)
         self.models: Dict[str, Any] = {}
 
-        if config is None:
-            config = get_config()
+        try:
+            validated_config = Config.model_validate(config)
+            self.config = validated_config.model_dump()
+        except ValidationError as e:
+            raise ValueError(
+                f"Config validation failed: {e}. "
+                "Please ensure your config matches the required schema. "
+                "See DESIGN_LLM_ONLY_CONFIG.md for migration guide."
+            ) from e
 
-        self.config = config
-        model_config = config["model"]
+        model_config = self.config["model"]
         self.model_config: Dict[str, Any] = model_config
 
         self.targets: List[str] = model_config["targets"]
@@ -42,10 +56,10 @@ class QuantileForecaster:
                 fe_config = {"ranked_cols": {"Level": "levels"}, "proximity_cols": ["Location"]}
 
         for col, map_key in fe_config.get("ranked_cols", {}).items():
-            self.ranked_encoders[col] = RankedCategoryEncoder(config_key=map_key)
+            self.ranked_encoders[col] = RankedCategoryEncoder(config=self.config, config_key=map_key)
 
         for col in fe_config.get("proximity_cols", []):
-            self.proximity_encoders[col] = ProximityEncoder()
+            self.proximity_encoders[col] = ProximityEncoder(config=self.config)
 
         optional_encodings = config.get("optional_encodings", {})
         self.date_weight_col: Optional[str] = None
@@ -53,9 +67,9 @@ class QuantileForecaster:
         for col, enc_config in optional_encodings.items():
             enc_type = enc_config.get("type", "")
             if enc_type == "cost_of_living":
-                self.optional_encoders[col] = CostOfLivingEncoder()
+                self.optional_encoders[col] = CostOfLivingEncoder(config=self.config)
             elif enc_type == "metro_population":
-                self.optional_encoders[col] = MetroPopulationEncoder()
+                self.optional_encoders[col] = MetroPopulationEncoder(config=self.config)
             elif enc_type == "normalize_recent":
                 self.optional_encoders[col] = DateNormalizer(mode="normalize_recent")
             elif enc_type == "least_recent":
@@ -319,12 +333,12 @@ class QuantileForecaster:
                 cv_results = xgb.cv(
                     params,
                     dtrain,
-                    num_boost_round=cv_params_config.get("num_boost_round", 100),
-                    nfold=cv_params_config.get("nfold", 5),
-                    early_stopping_rounds=cv_params_config.get("early_stopping_rounds", 10),
+                    num_boost_round=cv_params.get("num_boost_round", 100),
+                    nfold=cv_params.get("nfold", 5),
+                    early_stopping_rounds=cv_params.get("early_stopping_rounds", 10),
                     metrics={"quantile"},
                     seed=42,
-                    verbose_eval=cv_params_config.get("verbose_eval", False),
+                    verbose_eval=cv_params.get("verbose_eval", False),
                 )
 
                 metric_name = "test-quantile-mean"

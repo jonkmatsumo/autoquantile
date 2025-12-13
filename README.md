@@ -92,14 +92,22 @@ salary-forecast-train
 
 **Available Options:**
 - `--csv`: Path to training CSV (default: `salaries-list.csv`)
-- `--config`: Path to config JSON file (default: `config.json`)
+- `--config`: Path to config JSON file (required unless using `--generate-config`)
+- `--generate-config`: Generate configuration using LLM workflow from data
+- `--provider`: LLM provider for config generation (openai or gemini, default: openai, only used with `--generate-config`)
+- `--preset`: Preset name for config generation (only used with `--generate-config`)
 - `--tune`: Enable Optuna hyperparameter tuning
 - `--num-trials`: Number of tuning trials (default: 20)
 - `--remove-outliers`: Remove outliers using IQR before training
+- `--output`: Deprecated - models are now versioned through MLflow
 
-**Example:**
+**Examples:**
 ```bash
+# Train with existing config file
 salary-forecast-train --csv data.csv --config config.json --tune --num-trials 50 --remove-outliers
+
+# Generate config and train in one command
+salary-forecast-train --csv data.csv --generate-config --tune --num-trials 50
 ```
 
 **Note:** Models are automatically logged to MLflow. The `--output` flag is deprecated as models are now versioned through MLflow.
@@ -276,11 +284,21 @@ salary-forecast-config data.csv -o config.json
 **Options:**
 - `input_file`: Path to input CSV file (required)
 - `-o, --output`: Output JSON file path (default: stdout)
-- `--llm`: Use LLM to infer configuration (deprecated - use web interface workflow instead)
-- `--provider`: LLM provider (openai or gemini, default: openai)
-- `--preset`: LLM preset name (e.g., salary, none)
+- `--heuristic`: Use heuristic-based configuration generation (default: LLM workflow)
+- `--provider`: LLM provider (openai or gemini, default: openai, only used with workflow)
+- `--preset`: Preset name for workflow generation (only used with workflow)
 - `-v, --verbose`: Enable verbose logging
 
-**Note:** The `--llm` flag is deprecated. For AI-powered configuration, use the web interface's Configuration Wizard which provides a more robust multi-step workflow with human-in-the-loop confirmation.
+**Examples:**
+```bash
+# Generate config using LLM workflow (default)
+salary-forecast-config data.csv -o config.json
 
-You can also edit configurations manually in the web interface after generation, or provide a configuration file directly (`config.json`) when using the training CLI.
+# Generate config using heuristic method
+salary-forecast-config data.csv --heuristic -o config.json
+
+# Generate config with specific LLM provider
+salary-forecast-config data.csv --provider gemini -o config.json
+```
+
+**Note:** By default, the CLI uses the LLM workflow for configuration generation. For a more interactive experience with human-in-the-loop confirmation, use the web interface's Configuration Wizard. You can also edit configurations manually in the web interface after generation, or provide a configuration file directly (`config.json`) when using the training CLI.

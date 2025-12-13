@@ -5,8 +5,15 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 
 from src.xgboost.model import QuantileForecaster, SalaryForecaster
+
+# Import conftest function directly (pytest will handle the path)
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from conftest import create_test_config
 
 
 @pytest.fixture(scope="module")
@@ -56,13 +63,9 @@ def trained_model():
         },
         "feature_engineering": {"ranked_cols": {"Level": "levels"}, "proximity_cols": ["Location"]},
     }
-    with (
-        patch("src.xgboost.preprocessing.get_config", return_value=config),
-        patch("src.utils.geo_utils.get_config", return_value=config),
-    ):
-        model = SalaryForecaster(config=config)
-        model.train(df)
-        return model
+    model = SalaryForecaster(config=config)
+    model.train(df)
+    return model
 
 
 def test_monotonicity_level(trained_model):
@@ -179,15 +182,11 @@ class TestConfigHyperparams(unittest.TestCase):
     @patch("src.xgboost.model.xgb.train")
     @patch("src.xgboost.model.xgb.cv")
     @patch("src.xgboost.model.xgb.DMatrix")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
     def test_custom_hyperparams_passed_to_xgb(
-        self, mock_geo_get_config, mock_preprocessing_get_config, mock_dmatrix, mock_cv, mock_train
+        self, mock_dmatrix, mock_cv, mock_train
     ):
         """Verify custom hyperparameters from config are passed to XGBoost."""
         mock_cv.return_value = pd.DataFrame({"test-quantile-mean": [0.5, 0.4, 0.3]})
-        mock_preprocessing_get_config.return_value = self.custom_config
-        mock_geo_get_config.return_value = self.custom_config
 
         forecaster = SalaryForecaster(config=self.custom_config)
         forecaster.train(self.df)
@@ -205,15 +204,11 @@ class TestConfigHyperparams(unittest.TestCase):
     @patch("src.xgboost.model.xgb.train")
     @patch("src.xgboost.model.xgb.cv")
     @patch("src.xgboost.model.xgb.DMatrix")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
     def test_custom_cv_params_passed(
-        self, mock_geo_get_config, mock_preprocessing_get_config, mock_dmatrix, mock_cv, mock_train
+        self, mock_dmatrix, mock_cv, mock_train
     ):
         """Verify custom cross-validation parameters from config are used."""
         mock_cv.return_value = pd.DataFrame({"test-quantile-mean": [0.5]})
-        mock_preprocessing_get_config.return_value = self.custom_config
-        mock_geo_get_config.return_value = self.custom_config
 
         forecaster = SalaryForecaster(config=self.custom_config)
         forecaster.train(self.df)
@@ -242,65 +237,60 @@ class TestConfigHyperparams(unittest.TestCase):
 
 @patch("src.xgboost.model.xgb")
 @patch("src.xgboost.model.optuna")
-@patch("src.xgboost.preprocessing.get_config")
-@patch("src.utils.geo_utils.get_config")
-def test_tune(mock_geo_get_config, mock_preprocessing_get_config, mock_optuna, mock_xgb):
+def test_tune(mock_optuna, mock_xgb):
     """Verify hyperparameter tuning updates model config with best parameters."""
     mock_config = {
         "model": {
             "targets": ["BaseSalary"],
             "quantiles": [0.5],
             "features": [{"name": "Year", "monotone_constraint": 0}],
-            "hyperparameters": {"training": {}},  # Empty initially
+            "hyperparameters": {"training": {}},
         },
         "mappings": {"levels": {"E3": 0}, "location_targets": {}},
         "location_settings": {"max_distance_km": 50},
         "feature_engineering": {},
     }
 
-    with patch("src.xgboost.model.get_config", return_value=mock_config):
-        mock_preprocessing_get_config.return_value = mock_config
-        mock_geo_get_config.return_value = mock_config
-        forecaster = SalaryForecaster(config=mock_config)
+    forecaster = SalaryForecaster(config=mock_config)
 
-        # Mock Data
-        df = pd.DataFrame(
-            {
-                "Level": ["E3"],
-                "Location": ["NY"],
-                "Year": [2023],
-                "Date": ["2023-01-01"],
-                "BaseSalary": [100000],
-            }
-        )
+    # Mock Data
+    df = pd.DataFrame(
+        {
+            "Level": ["E3"],
+            "Location": ["NY"],
+            "Year": [2023],
+            "Date": ["2023-01-01"],
+            "BaseSalary": [100000],
+        }
+    )
 
-        # Mock xgb.cv behavior
-        # It returns a dataframe with 'test-quantile-mean'
-        mock_cv_results = pd.DataFrame({"test-quantile-mean": [0.5, 0.4, 0.6]})
-        mock_xgb.cv.return_value = mock_cv_results
+    # Mock xgb.cv behavior
+    # It returns a dataframe with 'test-quantile-mean'
+    mock_cv_results = pd.DataFrame({"test-quantile-mean": [0.5, 0.4, 0.6]})
+    mock_xgb.cv.return_value = mock_cv_results
 
-        # Mock Optuna Study
-        mock_study = MagicMock()
-        mock_optuna.create_study.return_value = mock_study
+    # Mock Optuna Study
+    mock_study = MagicMock()
+    mock_optuna.create_study.return_value = mock_study
 
-        # Verify optimize called
+    # Verify optimize called
 
-        # Mock best_params
-        mock_study.best_params = {"eta": 0.15, "max_depth": 7}
-        mock_study.best_value = 0.4
+    # Mock best_params
+    mock_study.best_params = {"eta": 0.15, "max_depth": 7}
+    mock_study.best_value = 0.4
 
-        best_params = forecaster.tune(df, n_trials=5)
+    best_params = forecaster.tune(df, n_trials=5)
 
-        # Verify optimize called
-        mock_optuna.create_study.assert_called_once()
-        mock_study.optimize.assert_called_once()
+    # Verify optimize called
+    mock_optuna.create_study.assert_called_once()
+    mock_study.optimize.assert_called_once()
 
-        # Verify config updated
-        assert forecaster.model_config["hyperparameters"]["training"]["eta"] == 0.15
-        assert forecaster.model_config["hyperparameters"]["training"]["max_depth"] == 7
+    # Verify config updated
+    assert forecaster.model_config["hyperparameters"]["training"]["eta"] == 0.15
+    assert forecaster.model_config["hyperparameters"]["training"]["max_depth"] == 7
 
-        # Verify return value
-        assert best_params == {"eta": 0.15, "max_depth": 7}
+    # Verify return value
+    assert best_params == {"eta": 0.15, "max_depth": 7}
 
 
 class TestOutlierDetection:
@@ -318,12 +308,7 @@ class TestOutlierDetection:
             "location_settings": {"max_distance_km": 50},
             "feature_engineering": {},
         }
-        with (
-            patch("src.xgboost.model.get_config", return_value=mock_config),
-            patch("src.xgboost.preprocessing.get_config", return_value=mock_config),
-            patch("src.utils.geo_utils.get_config", return_value=mock_config),
-        ):
-            return SalaryForecaster(config=mock_config)
+        return SalaryForecaster(config=mock_config)
 
     def test_remove_outliers_iqr(self, forecaster):
         # Create data with obvious outliers
@@ -393,17 +378,8 @@ class TestPreprocess(unittest.TestCase):
             },
         }
 
-    @patch("src.xgboost.model.get_config")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_preprocess_basic(
-        self, mock_geo_get_config, mock_preprocessing_get_config, mock_get_config
-    ):
+    def test_preprocess_basic(self):
         """Test _preprocess with basic input."""
-        mock_get_config.return_value = self.config
-        mock_preprocessing_get_config.return_value = self.config
-        mock_geo_get_config.return_value = self.config
-
         forecaster = SalaryForecaster(config=self.config)
 
         df = pd.DataFrame(
@@ -423,17 +399,8 @@ class TestPreprocess(unittest.TestCase):
         self.assertTrue("Location_Enc" in result.columns)
         self.assertTrue("YearsOfExperience" in result.columns)
 
-    @patch("src.xgboost.model.get_config")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_preprocess_missing_features(
-        self, mock_geo_get_config, mock_preprocessing_get_config, mock_get_config
-    ):
+    def test_preprocess_missing_features(self):
         """Test _preprocess with missing features."""
-        mock_get_config.return_value = self.config
-        mock_preprocessing_get_config.return_value = self.config
-        mock_geo_get_config.return_value = self.config
-
         forecaster = SalaryForecaster(config=self.config)
 
         # Missing YearsOfExperience
@@ -451,17 +418,8 @@ class TestPreprocess(unittest.TestCase):
             # The important thing is it doesn't crash unexpectedly
             pass
 
-    @patch("src.xgboost.model.get_config")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_preprocess_empty_dataframe(
-        self, mock_geo_get_config, mock_preprocessing_get_config, mock_get_config
-    ):
+    def test_preprocess_empty_dataframe(self):
         """Test _preprocess with empty DataFrame."""
-        mock_get_config.return_value = self.config
-        mock_preprocessing_get_config.return_value = self.config
-        mock_geo_get_config.return_value = self.config
-
         forecaster = SalaryForecaster(config=self.config)
 
         df = pd.DataFrame(columns=["Level", "Location", "YearsOfExperience"])
@@ -488,11 +446,9 @@ class TestPredict(unittest.TestCase):
             "feature_engineering": {"ranked_cols": {"Level": "levels"}},
         }
 
-    @patch("src.xgboost.model.get_config")
     @patch("src.xgboost.model.xgb.DMatrix")
-    def test_predict_empty_models(self, mock_dmatrix, mock_get_config):
+    def test_predict_empty_models(self, mock_dmatrix):
         """Test predict with empty models dict."""
-        mock_get_config.return_value = self.config
 
         forecaster = SalaryForecaster(config=self.config)
         forecaster.models = {}  # No models trained
@@ -514,11 +470,9 @@ class TestPredict(unittest.TestCase):
                         len(result[target]), 0, "Quantile dict should be empty when no models"
                     )
 
-    @patch("src.xgboost.model.get_config")
     @patch("src.xgboost.model.xgb.DMatrix")
-    def test_predict_missing_quantile(self, mock_dmatrix, mock_get_config):
+    def test_predict_missing_quantile(self, mock_dmatrix):
         """Test predict when model for a quantile is missing."""
-        mock_get_config.return_value = self.config
 
         forecaster = SalaryForecaster(config=self.config)
 
@@ -536,14 +490,11 @@ class TestPredict(unittest.TestCase):
         self.assertIn("p50", result["BaseSalary"])
         self.assertNotIn("p75", result["BaseSalary"])
 
-    @patch("src.xgboost.model.get_config")
     @patch("src.xgboost.model.xgb.DMatrix")
-    def test_predict_multiple_targets(self, mock_dmatrix, mock_get_config):
+    def test_predict_multiple_targets(self, mock_dmatrix):
         """Test predict with multiple targets."""
         config = self.config.copy()
         config["model"]["targets"] = ["BaseSalary", "TotalComp"]
-
-        mock_get_config.return_value = config
 
         forecaster = SalaryForecaster(config=config)
 
@@ -576,17 +527,8 @@ class TestRemoveOutliersErrorHandling(unittest.TestCase):
             "feature_engineering": {},
         }
 
-    @patch("src.xgboost.model.get_config")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_remove_outliers_unsupported_method(
-        self, mock_geo_get_config, mock_preprocessing_get_config, mock_get_config
-    ):
+    def test_remove_outliers_unsupported_method(self):
         """Test remove_outliers raises NotImplementedError for unsupported method."""
-        mock_get_config.return_value = self.config
-        mock_preprocessing_get_config.return_value = self.config
-        mock_geo_get_config.return_value = self.config
-
         forecaster = SalaryForecaster(config=self.config)
 
         df = pd.DataFrame({"Salary": [100, 200], "Date": ["2023-01-01", "2023-01-01"]})
@@ -596,17 +538,8 @@ class TestRemoveOutliersErrorHandling(unittest.TestCase):
 
         self.assertIn("Only IQR method is currently supported", str(cm.exception))
 
-    @patch("src.xgboost.model.get_config")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_remove_outliers_empty_dataframe(
-        self, mock_geo_get_config, mock_preprocessing_get_config, mock_get_config
-    ):
+    def test_remove_outliers_empty_dataframe(self):
         """Test remove_outliers with empty DataFrame."""
-        mock_get_config.return_value = self.config
-        mock_preprocessing_get_config.return_value = self.config
-        mock_geo_get_config.return_value = self.config
-
         forecaster = SalaryForecaster(config=self.config)
 
         df = pd.DataFrame(columns=["Salary", "Date"])
@@ -617,17 +550,8 @@ class TestRemoveOutliersErrorHandling(unittest.TestCase):
         self.assertEqual(len(df_clean), 0)
         self.assertEqual(removed, 0)
 
-    @patch("src.xgboost.model.get_config")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_remove_outliers_missing_target(
-        self, mock_geo_get_config, mock_preprocessing_get_config, mock_get_config
-    ):
+    def test_remove_outliers_missing_target(self):
         """Test remove_outliers when target column is missing."""
-        mock_get_config.return_value = self.config
-        mock_preprocessing_get_config.return_value = self.config
-        mock_geo_get_config.return_value = self.config
-
         forecaster = SalaryForecaster(config=self.config)
 
         # DataFrame without Salary column
@@ -639,19 +563,10 @@ class TestRemoveOutliersErrorHandling(unittest.TestCase):
         self.assertEqual(len(df_clean), len(df))
         self.assertEqual(removed, 0)
 
-    @patch("src.xgboost.model.get_config")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_remove_outliers_multiple_targets(
-        self, mock_geo_get_config, mock_preprocessing_get_config, mock_get_config
-    ):
+    def test_remove_outliers_multiple_targets(self):
         """Test remove_outliers with multiple target columns."""
         config = self.config.copy()
         config["model"]["targets"] = ["BaseSalary", "TotalComp"]
-        mock_get_config.return_value = config
-        mock_preprocessing_get_config.return_value = config
-        mock_geo_get_config.return_value = config
-
         forecaster = SalaryForecaster(config=config)
 
         # Create data with outliers in one target
@@ -689,11 +604,7 @@ class TestOptionalEncodings(unittest.TestCase):
         )
 
     @patch("src.xgboost.preprocessing.GeoMapper")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_preprocess_with_cost_of_living_encoding(
-        self, mock_geo_get_config, mock_preprocessing_get_config, mock_geo_mapper
-    ):
+    def test_preprocess_with_cost_of_living_encoding(self, mock_geo_mapper):
         """Test preprocessing with cost_of_living optional encoding."""
         config = {
             "mappings": {"levels": {"E3": 0, "E4": 1, "E5": 2}, "location_targets": {}},
@@ -710,12 +621,8 @@ class TestOptionalEncodings(unittest.TestCase):
             "feature_engineering": {"ranked_cols": {"Level": "levels"}},
             "optional_encodings": {"Location": {"type": "cost_of_living", "params": {}}},
         }
-        mock_preprocessing_get_config.return_value = config
-        mock_geo_get_config.return_value = config
-
         mock_mapper = mock_geo_mapper.return_value
         mock_mapper.get_zone.return_value = 1
-
         forecaster = QuantileForecaster(config=config)
         result = forecaster._preprocess(self.df)
 
@@ -725,11 +632,7 @@ class TestOptionalEncodings(unittest.TestCase):
         self.assertIn("Level_Enc", result.columns)
 
     @patch("src.xgboost.preprocessing.GeoMapper")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_preprocess_with_metro_population_encoding(
-        self, mock_geo_get_config, mock_preprocessing_get_config, mock_geo_mapper
-    ):
+    def test_preprocess_with_metro_population_encoding(self, mock_geo_mapper):
         """Test preprocessing with metro_population optional encoding."""
         config = {
             "mappings": {"levels": {"E3": 0}, "location_targets": {}},
@@ -743,9 +646,6 @@ class TestOptionalEncodings(unittest.TestCase):
             "feature_engineering": {},
             "optional_encodings": {"Location": {"type": "metro_population", "params": {}}},
         }
-        mock_preprocessing_get_config.return_value = config
-        mock_geo_get_config.return_value = config
-
         mock_mapper = mock_geo_mapper.return_value
         mock_mapper.get_zone.return_value = 1
 
@@ -757,11 +657,7 @@ class TestOptionalEncodings(unittest.TestCase):
         # Should contain population values
         self.assertTrue(all(result["Location_MetroPopulation"] > 0))
 
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_preprocess_with_normalize_recent_date_encoding(
-        self, mock_geo_get_config, mock_preprocessing_get_config
-    ):
+    def test_preprocess_with_normalize_recent_date_encoding(self):
         """Test preprocessing with normalize_recent date encoding."""
         config = {
             "mappings": {"levels": {}, "location_targets": {}},
@@ -775,9 +671,6 @@ class TestOptionalEncodings(unittest.TestCase):
             "feature_engineering": {},
             "optional_encodings": {"Date": {"type": "normalize_recent", "params": {}}},
         }
-        mock_preprocessing_get_config.return_value = config
-        mock_geo_get_config.return_value = config
-
         forecaster = QuantileForecaster(config=config)
         result = forecaster._preprocess(self.df)
 
@@ -790,11 +683,7 @@ class TestOptionalEncodings(unittest.TestCase):
         # Least recent date should be 0.0
         self.assertEqual(result["Date_Normalized"].iloc[0], 0.0)
 
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_preprocess_with_least_recent_date_encoding(
-        self, mock_geo_get_config, mock_preprocessing_get_config
-    ):
+    def test_preprocess_with_least_recent_date_encoding(self):
         """Test preprocessing with least_recent date encoding."""
         config = {
             "mappings": {"levels": {}, "location_targets": {}},
@@ -808,9 +697,6 @@ class TestOptionalEncodings(unittest.TestCase):
             "feature_engineering": {},
             "optional_encodings": {"Date": {"type": "least_recent", "params": {}}},
         }
-        mock_preprocessing_get_config.return_value = config
-        mock_geo_get_config.return_value = config
-
         forecaster = QuantileForecaster(config=config)
         result = forecaster._preprocess(self.df)
 
@@ -820,11 +706,7 @@ class TestOptionalEncodings(unittest.TestCase):
         self.assertTrue(all((result["Date_Normalized"] >= 0) & (result["Date_Normalized"] <= 1)))
 
     @patch("src.xgboost.preprocessing.GeoMapper")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_preprocess_with_weight_recent_date_encoding(
-        self, mock_geo_get_config, mock_preprocessing_get_config, mock_geo_mapper
-    ):
+    def test_preprocess_with_weight_recent_date_encoding(self, mock_geo_mapper):
         """Test that weight_recent encoding sets up sample weighting correctly."""
         config = {
             "mappings": {"levels": {}, "location_targets": {}},
@@ -839,9 +721,6 @@ class TestOptionalEncodings(unittest.TestCase):
             "feature_engineering": {},
             "optional_encodings": {"Date": {"type": "weight_recent", "params": {}}},
         }
-        mock_preprocessing_get_config.return_value = config
-        mock_geo_get_config.return_value = config
-
         forecaster = QuantileForecaster(config=config)
 
         # Should have date_weight_col set
@@ -855,11 +734,7 @@ class TestOptionalEncodings(unittest.TestCase):
         self.assertTrue(all(weights > 0))
 
     @patch("src.xgboost.preprocessing.GeoMapper")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_preprocess_with_multiple_optional_encodings(
-        self, mock_geo_get_config, mock_preprocessing_get_config, mock_geo_mapper
-    ):
+    def test_preprocess_with_multiple_optional_encodings(self, mock_geo_mapper):
         """Test preprocessing with multiple optional encodings on different columns."""
         config = {
             "mappings": {"levels": {"E3": 0, "E4": 1}, "location_targets": {}},
@@ -880,12 +755,8 @@ class TestOptionalEncodings(unittest.TestCase):
                 "Date": {"type": "normalize_recent", "params": {}},
             },
         }
-        mock_preprocessing_get_config.return_value = config
-        mock_geo_get_config.return_value = config
-
         mock_mapper = mock_geo_mapper.return_value
         mock_mapper.get_zone.return_value = 1
-
         forecaster = QuantileForecaster(config=config)
         result = forecaster._preprocess(self.df)
 
@@ -894,11 +765,7 @@ class TestOptionalEncodings(unittest.TestCase):
         self.assertIn("Date_Normalized", result.columns)
         self.assertIn("Level_Enc", result.columns)
 
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
-    def test_preprocess_without_optional_encodings(
-        self, mock_geo_get_config, mock_preprocessing_get_config
-    ):
+    def test_preprocess_without_optional_encodings(self):
         """Test that preprocessing works without optional encodings (backward compatibility)."""
         config = {
             "mappings": {"levels": {"E3": 0}, "location_targets": {}},
@@ -912,9 +779,6 @@ class TestOptionalEncodings(unittest.TestCase):
             "feature_engineering": {"ranked_cols": {"Level": "levels"}},
             # No optional_encodings field
         }
-        mock_preprocessing_get_config.return_value = config
-        mock_geo_get_config.return_value = config
-
         forecaster = QuantileForecaster(config=config)
         result = forecaster._preprocess(self.df)
 
@@ -923,3 +787,100 @@ class TestOptionalEncodings(unittest.TestCase):
         # Should not have optional encoding features
         self.assertNotIn("Location_CostOfLiving", result.columns)
         self.assertNotIn("Date_Normalized", result.columns)
+
+
+class TestConfigValidation(unittest.TestCase):
+    """Tests for config validation in QuantileForecaster."""
+
+    def test_init_with_valid_config(self):
+        """Test that QuantileForecaster accepts valid config."""
+        config = create_test_config()
+        forecaster = QuantileForecaster(config=config)
+        self.assertIsNotNone(forecaster.config)
+        self.assertEqual(forecaster.targets, config["model"]["targets"])
+        self.assertEqual(forecaster.quantiles, config["model"]["quantiles"])
+
+    def test_init_with_missing_config(self):
+        """Test that QuantileForecaster raises ValueError when config is missing."""
+        with self.assertRaises(ValueError) as context:
+            QuantileForecaster(config=None)
+
+        error_msg = str(context.exception)
+        self.assertIn("Config is required", error_msg)
+        self.assertIn("WorkflowService", error_msg)
+
+    def test_init_with_empty_config(self):
+        """Test that QuantileForecaster raises ValueError when config is empty."""
+        with self.assertRaises(ValueError) as context:
+            QuantileForecaster(config={})
+
+        error_msg = str(context.exception)
+        self.assertIn("Config is required", error_msg)
+
+    def test_init_with_missing_model_targets(self):
+        """Test that QuantileForecaster raises ValueError when model targets are missing."""
+        config = create_test_config()
+        del config["model"]["targets"]
+
+        with self.assertRaises(ValueError) as context:
+            QuantileForecaster(config=config)
+
+        error_msg = str(context.exception)
+        self.assertIn("Config validation failed", error_msg)
+        self.assertIn("targets", error_msg)
+
+    def test_init_with_missing_model_quantiles(self):
+        """Test that QuantileForecaster uses default quantiles when missing."""
+        config = create_test_config()
+        del config["model"]["quantiles"]
+
+        forecaster = QuantileForecaster(config=config)
+        self.assertEqual(forecaster.quantiles, [0.1, 0.25, 0.5, 0.75, 0.9])
+
+    def test_init_with_invalid_quantiles(self):
+        """Test that QuantileForecaster raises ValueError when quantiles are invalid."""
+        config = create_test_config()
+        config["model"]["quantiles"] = [1.5, 2.0]
+
+        with self.assertRaises(ValueError) as context:
+            QuantileForecaster(config=config)
+
+        error_msg = str(context.exception)
+        self.assertIn("Config validation failed", error_msg)
+
+    def test_init_with_invalid_monotone_constraint(self):
+        """Test that QuantileForecaster raises ValueError when monotone constraint is invalid."""
+        config = create_test_config()
+        config["model"]["features"][0]["monotone_constraint"] = 5
+
+        with self.assertRaises(ValueError) as context:
+            QuantileForecaster(config=config)
+
+        error_msg = str(context.exception)
+        self.assertIn("Config validation failed", error_msg)
+
+    def test_init_with_duplicate_feature_names(self):
+        """Test that QuantileForecaster raises ValueError when feature names are duplicated."""
+        config = create_test_config()
+        config["model"]["features"].append({"name": "Level_Enc", "monotone_constraint": 0})
+
+        with self.assertRaises(ValueError) as context:
+            QuantileForecaster(config=config)
+
+        error_msg = str(context.exception)
+        self.assertIn("Config validation failed", error_msg)
+
+    def test_init_validates_and_stores_config(self):
+        """Test that QuantileForecaster validates config and stores validated version."""
+        config = create_test_config()
+        forecaster = QuantileForecaster(config=config)
+
+        # Config should be validated and stored
+        self.assertIsNotNone(forecaster.config)
+        # Should have all required keys
+        self.assertIn("mappings", forecaster.config)
+        self.assertIn("location_settings", forecaster.config)
+        self.assertIn("model", forecaster.config)
+        # Model config should be accessible
+        self.assertIn("targets", forecaster.model_config)
+        self.assertIn("quantiles", forecaster.model_config)

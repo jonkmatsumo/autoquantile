@@ -316,25 +316,30 @@ def test_render_save_load_controls_save():
         assert kwargs["file_name"] == "config.json"
 
 
-def test_render_save_load_controls_load_success():
+def test_render_save_load_controls_json_export_only():
 
     config = {"a": 1}
-    loaded_config = {"a": 2}
 
     with patch("src.app.config_ui.st") as mock_st:
-        # Mock file uploader returning a file
-        mock_file = MagicMock()
-        mock_st.file_uploader.return_value = mock_file
+        mock_st.markdown = MagicMock()
+        mock_st.subheader = MagicMock()
+        mock_st.download_button = MagicMock()
+        mock_st.info = MagicMock()
+        mock_st.session_state = {}
 
-        # Mock json load
-        with patch("json.load", return_value=loaded_config):
-            # Mock session state
-            mock_st.session_state = {}
+        render_save_load_controls(config)
 
-            render_save_load_controls(config)
+        # Verify download button was called (export still available)
+        mock_st.download_button.assert_called_once()
 
-            assert mock_st.session_state["config_override"] == loaded_config
-            mock_st.rerun.assert_called_once()
+        # Verify info message about JSON loading being removed
+        mock_st.info.assert_called_once()
+        info_call = str(mock_st.info.call_args)
+        assert "JSON" in info_call or "deprecated" in info_call.lower() or "removed" in info_call.lower()
+
+        # Verify file uploader was NOT called (loading removed)
+        if hasattr(mock_st, "file_uploader"):
+            assert not mock_st.file_uploader.called or mock_st.file_uploader.call_count == 0
 
 
 def test_render_config_ui_uses_override(sample_config):

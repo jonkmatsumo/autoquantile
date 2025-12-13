@@ -84,10 +84,8 @@ class TestStreamlitApp(unittest.TestCase):
 
 class TestMain(unittest.TestCase):
     @patch("src.app.app.st")
-    @patch("src.app.app.get_config")
     @patch("src.app.app.render_training_ui")
-    def test_main_defaults_to_training(self, mock_render_training, mock_get_config, mock_st):
-        mock_get_config.return_value = {}
+    def test_main_defaults_to_training(self, mock_render_training, mock_st):
         mock_st.session_state = {}
         mock_st.sidebar.radio.return_value = "Training"
 
@@ -96,15 +94,50 @@ class TestMain(unittest.TestCase):
         mock_st.set_page_config.assert_called_once()
         mock_st.sidebar.title.assert_called_with("Navigation")
         mock_render_training.assert_called_once()
+        # Verify config_override is initialized to None
+        self.assertIn("config_override", mock_st.session_state)
+        self.assertIsNone(mock_st.session_state["config_override"])
 
     @patch("src.app.app.st")
-    @patch("src.app.app.get_config")
     @patch("src.app.app.render_inference_ui")
-    def test_main_navigation_to_inference(self, mock_render_inference, mock_get_config, mock_st):
-        mock_get_config.return_value = {}
+    def test_main_navigation_to_inference(self, mock_render_inference, mock_st):
         mock_st.session_state = {"nav": "Inference"}
         mock_st.sidebar.radio.return_value = "Inference"
 
         main()
 
         mock_render_inference.assert_called_once()
+        # Verify config_override is initialized to None
+        self.assertIn("config_override", mock_st.session_state)
+        self.assertIsNone(mock_st.session_state["config_override"])
+
+    @patch("src.app.app.st")
+    @patch("src.app.app.render_training_ui")
+    def test_main_initializes_empty_config_state(self, mock_render_training, mock_st):
+        """Test that app initializes with empty config state."""
+        mock_st.session_state = {}
+        mock_st.sidebar.radio.return_value = "Training"
+
+        main()
+
+        # Verify config_override is initialized
+        self.assertIn("config_override", mock_st.session_state)
+        self.assertIsNone(mock_st.session_state["config_override"])
+
+    @patch("src.app.app.st")
+    @patch("src.app.app.render_training_ui")
+    def test_main_preserves_existing_config(self, mock_render_training, mock_st):
+        """Test that app preserves existing config from workflow wizard."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from conftest import create_test_config
+
+        existing_config = create_test_config()
+        mock_st.session_state = {"config_override": existing_config}
+        mock_st.sidebar.radio.return_value = "Training"
+
+        main()
+
+        # Verify existing config is preserved
+        self.assertEqual(mock_st.session_state["config_override"], existing_config)

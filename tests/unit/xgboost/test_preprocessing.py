@@ -147,38 +147,34 @@ def test_sample_weighter_k_zero():
 
 def test_ranked_encoder_with_config_key():
     """Test RankedCategoryEncoder with config_key parameter."""
-    with patch("src.xgboost.preprocessing.get_config") as mock_get_config:
-        mock_config = {"mappings": {"levels": {"E3": 0, "E4": 1, "E5": 2}}}
-        mock_get_config.return_value = mock_config
+    mock_config = {"mappings": {"levels": {"E3": 0, "E4": 1, "E5": 2}}}
 
-        encoder = RankedCategoryEncoder(config_key="levels")
+    encoder = RankedCategoryEncoder(config=mock_config, config_key="levels")
 
-        # Verify mapping was loaded from config
-        assert encoder.mapping == {"E3": 0, "E4": 1, "E5": 2}
+    # Verify mapping was loaded from config
+    assert encoder.mapping == {"E3": 0, "E4": 1, "E5": 2}
 
-        # Test transform works
-        X = pd.Series(["E3", "E4", "E5"])
-        result = encoder.transform(X)
-        expected = np.array([0, 1, 2])
-        np.testing.assert_array_equal(result, expected)
+    # Test transform works
+    X = pd.Series(["E3", "E4", "E5"])
+    result = encoder.transform(X)
+    expected = np.array([0, 1, 2])
+    np.testing.assert_array_equal(result, expected)
 
 
 def test_ranked_encoder_config_key_missing():
     """Test RankedCategoryEncoder with missing config key."""
-    with patch("src.xgboost.preprocessing.get_config") as mock_get_config:
-        mock_config = {"mappings": {}}
-        mock_get_config.return_value = mock_config
+    mock_config = {"mappings": {}}
 
-        encoder = RankedCategoryEncoder(config_key="missing_key")
+    encoder = RankedCategoryEncoder(config=mock_config, config_key="missing_key")
 
-        # Should have empty mapping
-        assert encoder.mapping == {}
+    # Should have empty mapping
+    assert encoder.mapping == {}
 
-        # Transform should return -1 for all values
-        X = pd.Series(["E3", "E4"])
-        result = encoder.transform(X)
-        expected = np.array([-1, -1])
-        np.testing.assert_array_equal(result, expected)
+    # Transform should return -1 for all values
+    X = pd.Series(["E3", "E4"])
+    result = encoder.transform(X)
+    expected = np.array([-1, -1])
+    np.testing.assert_array_equal(result, expected)
 
 
 def test_ranked_encoder_empty_mapping():
@@ -278,15 +274,12 @@ def test_ranked_encoder_list_input():
 
 
 def test_sample_weighter_config_key():
-    """Test SampleWeighter loads k from config when not provided."""
-    with patch("src.xgboost.preprocessing.get_config") as mock_get_config:
-        mock_config = {"model": {"sample_weight_k": 2.0}}
-        mock_get_config.return_value = mock_config
+    """Test SampleWeighter uses default k when not provided."""
+    # k now defaults to 1.0 (no longer loads from config)
+    weighter = SampleWeighter()
 
-        weighter = SampleWeighter()
-
-        # Should load k from config
-        assert weighter.k == 2.0
+    # Should use default k value
+    assert weighter.k == 1.0
 
 
 # --- CostOfLivingEncoder Tests ---

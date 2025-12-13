@@ -6,13 +6,17 @@ from typing import Any, Dict, Optional, Tuple
 from geopy.distance import geodesic
 from geopy.geocoders import Nominatim
 
-from .config_loader import get_config
-
 
 class GeoMapper:
-    def __init__(self) -> None:
-        self.config: Dict[str, Any] = get_config()
-        self.targets: Dict[str, int] = self.config["mappings"]["location_targets"]
+    def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
+        """Initialize GeoMapper. Args: config (Optional[Dict[str, Any]]): Configuration dictionary. If None, uses defaults. Returns: None."""
+        if config is None:
+            config = {
+                "mappings": {"location_targets": {}},
+                "location_settings": {"max_distance_km": 50},
+            }
+        self.config: Dict[str, Any] = config
+        self.targets: Dict[str, int] = self.config.get("mappings", {}).get("location_targets", {})
         self.settings: Dict[str, Any] = self.config.get(
             "location_settings", {"max_distance_km": 50}
         )

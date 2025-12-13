@@ -1,40 +1,93 @@
 import argparse
 import contextlib
 import io
+import json
 import os
 import traceback
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import mlflow
+import pandas as pd
 from rich import box
 from rich.console import Console, Group
 from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
+from src.model.config_schema_model import validate_config_dict
 from src.services.model_registry import SalaryForecasterWrapper, get_experiment_name
-from src.utils.config_loader import load_config
+from src.services.workflow_service import WorkflowService
 from src.utils.data_utils import load_data
 from src.utils.logger import setup_logging
 from src.xgboost.model import SalaryForecaster
 
 
+def load_config_from_file(config_path: str) -> Dict[str, Any]:
+    """Load and validate config from JSON file. Args: config_path (str): Config file path. Returns: Dict[str, Any]: Validated configuration. Raises: FileNotFoundError: If config file not found. ValueError: If config is invalid."""
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    with open(config_path, "r") as f:
+        config_dict = json.load(f)
+
+    try:
+        validated_config = validate_config_dict(config_dict)
+        return validated_config.model_dump()
+    except Exception as e:
+        raise ValueError(f"Config validation failed: {e}. Please ensure your config matches the required schema.") from e
+
+
+def generate_config_from_data(csv_path: str, provider: str = "openai", preset: Optional[str] = None) -> Dict[str, Any]:
+    """Generate config using LLM workflow from data. Args: csv_path (str): Training data CSV path. provider (str): LLM provider. preset (Optional[str]): Optional preset name. Returns: Dict[str, Any]: Generated configuration. Raises: FileNotFoundError: If CSV file not found. RuntimeError: If workflow fails."""
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"CSV file not found: {csv_path}")
+
+    df = load_data(csv_path)
+
+    try:
+        workflow_service = WorkflowService(provider=provider)
+        result = workflow_service.start_workflow(df, sample_size=50, preset=preset)
+
+        if result.get("status") == "error":
+            raise RuntimeError(f"Workflow failed: {result.get('error', 'Unknown error')}")
+
+        # Confirm classification
+        result = workflow_service.confirm_classification()
+        if result.get("status") == "error":
+            raise RuntimeError(f"Classification confirmation failed: {result.get('error', 'Unknown error')}")
+
+        # Confirm encoding
+        result = workflow_service.confirm_encoding()
+        if result.get("status") == "error":
+            raise RuntimeError(f"Encoding confirmation failed: {result.get('error', 'Unknown error')}")
+
+        # Get final config
+        final_config = workflow_service.get_final_config()
+        if not final_config:
+            raise RuntimeError("Failed to generate configuration from workflow")
+
+        return final_config
+    except Exception as e:
+        raise RuntimeError(f"Failed to generate config using workflow: {e}") from e
+
+
 def train_workflow(
     csv_path: str,
-    config_path: str,
+    config: Dict[str, Any],
     output_path: str,
     console: Any,
     do_tune: bool = False,
     num_trials: int = 20,
     remove_outliers: bool = False,
 ) -> None:
-    """Execute the model training workflow. Args: csv_path (str): Training data CSV path. config_path (str): Config file path. output_path (str): Model output path. console (Any): Rich console. do_tune (bool): Run hyperparameter tuning. num_trials (int): Tuning trials. remove_outliers (bool): Remove outliers. Returns: None."""
+    """Execute the model training workflow. Args: csv_path (str): Training data CSV path. config (Dict[str, Any]): Required configuration dictionary. output_path (str): Model output path (deprecated). console (Any): Rich console. do_tune (bool): Run hyperparameter tuning. num_trials (int): Tuning trials. remove_outliers (bool): Remove outliers. Returns: None. Raises: FileNotFoundError: If CSV file not found. ValueError: If config is invalid."""
     if not os.path.exists(csv_path):
         console.print(f"[bold red]Error: {csv_path} not found.[/bold red]")
         return
 
-    if config_path and os.path.exists(config_path):
-        load_config(config_path)
+    if not config:
+        console.print("[bold red]Error: Config is required.[/bold red]")
+        return
 
     status_text = Text("Status: Preparing...", style="bold blue")
 
@@ -52,10 +105,9 @@ def train_workflow(
         df = load_data(csv_path)
 
         status_text.plain = "Status: Starting training workflow..."
-        status_text.plain = "Status: Initializing target cities..."
 
         with contextlib.redirect_stdout(io.StringIO()):
-            forecaster = SalaryForecaster()
+            forecaster = SalaryForecaster(config=config)
 
         if do_tune:
             status_text.plain = f"Status: Tuning hyperparameters (Trials={num_trials})..."
@@ -122,9 +174,43 @@ def main() -> None:
     console = Console()
     console.print("[bold green]Salary Forecasting Training CLI[/bold green]")
 
-    parser = argparse.ArgumentParser(description="Train Salary Forecast Model")
+    parser = argparse.ArgumentParser(
+        description="Train Salary Forecast Model",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Train with existing config file
+  python -m src.cli.train_cli --csv data.csv --config config.json
+
+  # Generate config from data and train
+  python -m src.cli.train_cli --csv data.csv --generate-config
+
+  # Generate config with specific LLM provider
+  python -m src.cli.train_cli --csv data.csv --generate-config --provider gemini
+        """,
+    )
     parser.add_argument("--csv", default="salaries-list.csv", help="Path to training CSV")
-    parser.add_argument("--config", default="config.json", help="Path to config JSON")
+    config_group = parser.add_mutually_exclusive_group(required=True)
+    config_group.add_argument(
+        "--config",
+        help="Path to config JSON file (required if not using --generate-config)",
+    )
+    config_group.add_argument(
+        "--generate-config",
+        action="store_true",
+        help="Generate configuration using LLM workflow from data",
+    )
+    parser.add_argument(
+        "--provider",
+        default="openai",
+        choices=["openai", "gemini"],
+        help="LLM provider for config generation (default: openai, only used with --generate-config)",
+    )
+    parser.add_argument(
+        "--preset",
+        default=None,
+        help="Preset name for config generation (only used with --generate-config)",
+    )
     parser.add_argument(
         "--output", default=None, help="Deprecated: Output path (now logs to MLflow)"
     )
@@ -137,9 +223,34 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
+        # Load or generate config
+        if args.generate_config:
+            console.print("[bold blue]Generating configuration from data using LLM workflow...[/bold blue]")
+            try:
+                config = generate_config_from_data(args.csv, provider=args.provider, preset=args.preset)
+                console.print("[bold green]✓ Configuration generated successfully![/bold green]")
+            except Exception as e:
+                console.print(f"[bold red]Failed to generate config: {e}[/bold red]")
+                traceback.print_exc()
+                return
+        else:
+            if not args.config:
+                console.print("[bold red]Error: --config is required when not using --generate-config[/bold red]")
+                return
+            try:
+                config = load_config_from_file(args.config)
+                console.print(f"[bold green]✓ Configuration loaded from {args.config}[/bold green]")
+            except FileNotFoundError as e:
+                console.print(f"[bold red]Error: {e}[/bold red]")
+                console.print("[yellow]Hint: Use --generate-config to create a config from your data[/yellow]")
+                return
+            except ValueError as e:
+                console.print(f"[bold red]Config validation error: {e}[/bold red]")
+                return
+
         train_workflow(
             args.csv,
-            args.config,
+            config,
             args.output,
             console,
             do_tune=args.tune,

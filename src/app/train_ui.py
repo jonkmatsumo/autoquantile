@@ -148,12 +148,21 @@ def render_training_ui() -> None:
 
     st.markdown("---")
     wizard_completed = st.session_state.get("workflow_phase") == "complete"
+    config = st.session_state.get("config_override")
 
-    if not wizard_completed:
+    # Validate config exists and is not None/empty
+    config_valid = config is not None and config != {} and isinstance(config, dict)
+
+    if not wizard_completed or not config_valid:
         with st.expander("AI-Powered Configuration Wizard", expanded=True):
-            st.write(
-                "**Required:** Complete the configuration wizard before you can start training."
-            )
+            if not wizard_completed:
+                st.write(
+                    "**Required:** Complete the configuration wizard before you can start training."
+                )
+            elif not config_valid:
+                st.write(
+                    "**Required:** Configuration is missing or invalid. Please regenerate configuration."
+                )
             st.info("Generate optimal configuration using an intelligent multi-step workflow.")
 
             available_providers = get_workflow_providers()
@@ -178,12 +187,18 @@ def render_training_ui() -> None:
         )
         if st.button("Re-run Configuration Wizard"):
             _reset_workflow_state()
+            st.session_state["config_override"] = None
             st.rerun()
 
-    if not wizard_completed:
-        st.info(
-            "⏳ Please complete the AI-Powered Configuration Wizard above to enable training options."
-        )
+    if not wizard_completed or not config_valid:
+        if not wizard_completed:
+            st.info(
+                "⏳ Please complete the AI-Powered Configuration Wizard above to enable training options."
+            )
+        else:
+            st.error(
+                "❌ Configuration is missing or invalid. Please complete the Configuration Wizard to generate a valid configuration."
+            )
         return
 
     st.markdown("---")
@@ -212,18 +227,32 @@ def render_training_ui() -> None:
                 st.error("No data loaded.")
                 return
 
+            # Validate config exists before training
+            if not config_valid:
+                st.error(
+                    "❌ Configuration is required for training. Please complete the Configuration Wizard first."
+                )
+                return
+
             dataset_name = st.session_state.get("training_dataset_name", "Unknown Data")
 
-            job_id = training_service.start_training_async(
-                df,
-                remove_outliers=remove_outliers,
-                do_tune=do_tune,
-                n_trials=num_trials,
-                additional_tag=additional_tag if additional_tag.strip() else None,
-                dataset_name=dataset_name,
-            )
-            st.session_state["training_job_id"] = job_id
-            st.rerun()
+            try:
+                job_id = training_service.start_training_async(
+                    df,
+                    config,
+                    remove_outliers=remove_outliers,
+                    do_tune=do_tune,
+                    n_trials=num_trials,
+                    additional_tag=additional_tag if additional_tag.strip() else None,
+                    dataset_name=dataset_name,
+                )
+                st.session_state["training_job_id"] = job_id
+                st.rerun()
+            except ValueError as e:
+                st.error(f"❌ Configuration error: {e}")
+                st.info("Please regenerate your configuration using the Configuration Wizard.")
+            except Exception as e:
+                st.error(f"❌ Failed to start training: {e}")
 
     else:
         status = training_service.get_job_status(job_id)

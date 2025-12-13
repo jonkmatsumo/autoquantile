@@ -605,8 +605,6 @@ class TestTrainingWithOptionalEncodings(unittest.TestCase):
     """Integration tests for training with optional encodings."""
 
     @patch("src.xgboost.preprocessing.GeoMapper")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
     @patch("src.xgboost.model.xgb.train")
     @patch("src.xgboost.model.xgb.cv")
     @patch("src.xgboost.model.xgb.DMatrix")
@@ -615,8 +613,6 @@ class TestTrainingWithOptionalEncodings(unittest.TestCase):
         mock_dmatrix,
         mock_cv,
         mock_train,
-        mock_geo_get_config,
-        mock_preprocessing_get_config,
         mock_geo_mapper,
     ):
         """Test training with cost_of_living optional encoding."""
@@ -632,8 +628,6 @@ class TestTrainingWithOptionalEncodings(unittest.TestCase):
             "feature_engineering": {},
             "optional_encodings": {"Location": {"type": "cost_of_living", "params": {}}},
         }
-        mock_preprocessing_get_config.return_value = config
-        mock_geo_get_config.return_value = config
         mock_cv.return_value = pd.DataFrame({"test-quantile-mean": [0.5]})
 
         mock_mapper = mock_geo_mapper.return_value
@@ -660,13 +654,11 @@ class TestTrainingWithOptionalEncodings(unittest.TestCase):
         forecaster.train(df)
         self.assertTrue(mock_train.called)
 
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
     @patch("src.xgboost.model.xgb.train")
     @patch("src.xgboost.model.xgb.cv")
     @patch("src.xgboost.model.xgb.DMatrix")
     def test_training_with_date_normalize_recent(
-        self, mock_dmatrix, mock_cv, mock_train, mock_geo_get_config, mock_preprocessing_get_config
+        self, mock_dmatrix, mock_cv, mock_train
     ):
         """Test training with normalize_recent date encoding."""
         config = {
@@ -681,8 +673,6 @@ class TestTrainingWithOptionalEncodings(unittest.TestCase):
             "feature_engineering": {},
             "optional_encodings": {"Date": {"type": "normalize_recent", "params": {}}},
         }
-        mock_preprocessing_get_config.return_value = config
-        mock_geo_get_config.return_value = config
         mock_cv.return_value = pd.DataFrame({"test-quantile-mean": [0.5]})
 
         from src.xgboost.model import QuantileForecaster
@@ -715,8 +705,6 @@ class TestTrainingWithOptionalEncodings(unittest.TestCase):
         self.assertTrue(mock_train.called)
 
     @patch("src.xgboost.preprocessing.GeoMapper")
-    @patch("src.xgboost.preprocessing.get_config")
-    @patch("src.utils.geo_utils.get_config")
     @patch("src.xgboost.model.xgb.train")
     @patch("src.xgboost.model.xgb.cv")
     @patch("src.xgboost.model.xgb.DMatrix")
@@ -725,8 +713,6 @@ class TestTrainingWithOptionalEncodings(unittest.TestCase):
         mock_dmatrix,
         mock_cv,
         mock_train,
-        mock_geo_get_config,
-        mock_preprocessing_get_config,
         mock_geo_mapper,
     ):
         """Test training with multiple optional encodings."""
@@ -748,8 +734,6 @@ class TestTrainingWithOptionalEncodings(unittest.TestCase):
                 "Date": {"type": "normalize_recent", "params": {}},
             },
         }
-        mock_preprocessing_get_config.return_value = config
-        mock_geo_get_config.return_value = config
         mock_cv.return_value = pd.DataFrame({"test-quantile-mean": [0.5]})
 
         mock_mapper = mock_geo_mapper.return_value

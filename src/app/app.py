@@ -3,7 +3,6 @@ import streamlit as st
 from src.app.inference_ui import render_inference_ui
 from src.app.train_ui import render_training_ui
 from src.utils.compatibility import apply_backward_compatibility
-from src.utils.config_loader import get_config
 from src.utils.logger import setup_logging
 
 apply_backward_compatibility()
@@ -13,8 +12,10 @@ def main() -> None:
     """Main entry point for the Streamlit application. Returns: None."""
     st.set_page_config(page_title="Salary Forecaster", layout="wide")
 
-    config = get_config()
-    st.session_state["config_override"] = config
+    # Initialize config_override only if not already set (from workflow wizard)
+    if "config_override" not in st.session_state:
+        st.session_state["config_override"] = None
+
     st.sidebar.title("Navigation")
 
     if "nav" not in st.session_state:
