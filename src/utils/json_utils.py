@@ -18,12 +18,15 @@ def normalize_json_string(json_str: str, max_depth: int = 5) -> Any:
 
     def _parse_once(s: str) -> Optional[Any]:
         """Tries all parsing strategies once. Args: s (str): JSON string to parse. Returns: Optional[Any]: Parsed JSON object or None if all strategies fail."""
+        # Strategy 1: Direct parse
         try:
             return json.loads(s)
         except json.JSONDecodeError:
             pass
 
         stripped = s.strip()
+        
+        # Strategy 2: Remove outer quotes if present
         if (stripped.startswith('"') and stripped.endswith('"')) or (
             stripped.startswith("'") and stripped.endswith("'")
         ):
@@ -33,23 +36,37 @@ def normalize_json_string(json_str: str, max_depth: int = 5) -> Any:
             except json.JSONDecodeError:
                 pass
 
-        try:
-            unescaped = s.encode().decode("unicode_escape")
-            return json.loads(unescaped)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            pass
-
+        # Strategy 3: Handle escaped quotes
         try:
             manual_unescaped = s.replace('\\"', '"').replace("\\\\", "\\")
             return json.loads(manual_unescaped)
         except json.JSONDecodeError:
             pass
 
+        # Strategy 4: Remove quotes and unescape
         if stripped.startswith('"') and stripped.endswith('"'):
             try:
                 unquoted = stripped[1:-1]
                 unescaped = unquoted.replace('\\"', '"').replace("\\\\", "\\")
                 return json.loads(unescaped)
+            except json.JSONDecodeError:
+                pass
+
+        # Strategy 5: Try unicode escape decoding
+        try:
+            unescaped = s.encode().decode("unicode_escape")
+            return json.loads(unescaped)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass
+
+        # Strategy 6: Try to find and extract JSON object if embedded in text
+        if "{" in s and "}" in s:
+            try:
+                start_idx = s.find("{")
+                end_idx = s.rfind("}") + 1
+                if start_idx < end_idx:
+                    json_candidate = s[start_idx:end_idx]
+                    return json.loads(json_candidate)
             except json.JSONDecodeError:
                 pass
 

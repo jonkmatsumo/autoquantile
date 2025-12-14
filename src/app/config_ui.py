@@ -146,6 +146,25 @@ def _render_classification_phase(
     st.subheader("Step 1: Column Classification")
 
     data = result.get("data", {})
+    
+    # Fallback: if data is empty, try to get classification directly from workflow state
+    if not data.get("targets") and not data.get("features") and not data.get("ignore"):
+        if service.workflow and service.workflow.current_state:
+            classification = service.workflow.current_state.get("column_classification", {})
+            if classification:
+                data = {
+                    "targets": classification.get("targets", []),
+                    "features": classification.get("features", []),
+                    "ignore": classification.get("ignore", []),
+                    "reasoning": classification.get("reasoning", ""),
+                }
+                # Log warning if classification is still empty after fallback
+                if not data.get("targets") and not data.get("features") and not data.get("ignore"):
+                    st.warning(
+                        "⚠️ **Classification Issue**: The LLM provided reasoning but no column classifications. "
+                        "This may indicate a parsing error. Please check the logs for details."
+                    )
+    
     reasoning = data.get("reasoning", "")
     if reasoning:
         with st.expander("Agent Reasoning", expanded=True):
@@ -158,6 +177,46 @@ def _render_classification_phase(
     targets = data.get("targets", [])
     features = data.get("features", [])
     ignore = data.get("ignore", [])
+
+    # Create a mapping from normalized (lowercase, stripped) column names to actual column names
+    column_name_map = {col.lower().strip(): col for col in all_columns}
+    
+    # Normalize classified column names to match actual DataFrame column names
+    def normalize_column_name(class_col: str) -> str:
+        """Match a classified column name to an actual DataFrame column name."""
+        normalized = class_col.strip()
+        # Try exact match (case-sensitive)
+        if normalized in all_columns:
+            return normalized
+        # Try case-insensitive match
+        normalized_lower = normalized.lower()
+        if normalized_lower in column_name_map:
+            return column_name_map[normalized_lower]
+        # Return original if no match (will show as unmatched)
+        return normalized
+    
+    targets = [normalize_column_name(col) for col in targets]
+    features = [normalize_column_name(col) for col in features]
+    ignore = [normalize_column_name(col) for col in ignore]
+    
+    # Check for mismatches after normalization
+    all_classified = set(targets + features + ignore)
+    all_classified_normalized = {c.lower().strip() for c in all_classified}
+    all_columns_normalized = {c.lower().strip() for c in all_columns}
+    
+    unclassified_columns = [col for col in all_columns if col.lower().strip() not in all_classified_normalized]
+    unmatched_classifications = [c for c in all_classified if c.lower().strip() not in all_columns_normalized]
+    
+    if unclassified_columns and (targets or features or ignore):
+        st.warning(
+            f"⚠️ **Column Name Mismatch**: The following columns are not classified: {', '.join(unclassified_columns)}. "
+            f"This may indicate a column name mismatch between the data and the LLM response. "
+            f"Classified columns: {', '.join(all_classified)}"
+        )
+    if unmatched_classifications:
+        st.warning(
+            f"⚠️ **Unknown Columns**: The classification references columns not in the dataset: {', '.join(unmatched_classifications)}"
+        )
 
     # Get column_types from workflow state
     column_types = (

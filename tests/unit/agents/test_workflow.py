@@ -403,12 +403,11 @@ class TestConfigWorkflow(unittest.TestCase):
         mock_compiled.stream.return_value = iter(
             [{"column_classification": {"targets": ["Salary"]}}]
         )
-        mock_compiled.get_state.return_value = Mock(
-            values={
-                "column_classification": {"targets": ["Salary"]},
-                "current_phase": "classification",
-            }
-        )
+        state_values = {
+            "column_classification": {"targets": ["Salary"]},
+            "current_phase": "classification",
+        }
+        mock_compiled.get_state.return_value = Mock(values=state_values)
 
         mock_compile.return_value = mock_compiled
 
@@ -419,6 +418,7 @@ class TestConfigWorkflow(unittest.TestCase):
         result = workflow.start(df.to_json(), ["Salary"], {"Salary": "int64"}, 1)
 
         self.assertIn("column_classification", result)
+        self.assertEqual(result["column_classification"]["targets"], ["Salary"])
 
     @patch("src.agents.workflow.compile_workflow")
     def test_start_with_preset(self, mock_compile):
@@ -429,13 +429,12 @@ class TestConfigWorkflow(unittest.TestCase):
         mock_compiled.stream.return_value = iter(
             [{"column_classification": {"targets": ["Salary"]}}]
         )
-        mock_compiled.get_state.return_value = Mock(
-            values={
-                "column_classification": {"targets": ["Salary"]},
-                "current_phase": "classification",
-                "preset": "salary",
-            }
-        )
+        state_values = {
+            "column_classification": {"targets": ["Salary"]},
+            "current_phase": "classification",
+            "preset": "salary",
+        }
+        mock_compiled.get_state.return_value = Mock(values=state_values)
 
         mock_compile.return_value = mock_compiled
 
@@ -458,13 +457,12 @@ class TestConfigWorkflow(unittest.TestCase):
         mock_compiled.stream.return_value = iter(
             [{"column_classification": {"targets": ["Salary"]}}]
         )
-        mock_compiled.get_state.return_value = Mock(
-            values={
-                "column_classification": {"targets": ["Salary"]},
-                "current_phase": "classification",
-                "optional_encodings": {},
-            }
-        )
+        state_values = {
+            "column_classification": {"targets": ["Salary"]},
+            "current_phase": "classification",
+            "optional_encodings": {},
+        }
+        mock_compiled.get_state.return_value = Mock(values=state_values)
 
         mock_compile.return_value = mock_compiled
 
@@ -503,6 +501,7 @@ class TestConfigWorkflow(unittest.TestCase):
         mock_compiled.update_state.assert_called_once()
         # Result should be the state after encoding
         self.assertIn("current_phase", result)
+        self.assertEqual(result["current_phase"], "encoding")
 
     @patch("src.agents.workflow.compile_workflow")
     def test_confirm_classification_with_optional_encodings(self, mock_compile):
@@ -541,6 +540,8 @@ class TestConfigWorkflow(unittest.TestCase):
         self.assertEqual(
             update_state_dict["optional_encodings"]["Location"]["type"], "cost_of_living"
         )
+        # Verify result contains the updated state
+        self.assertEqual(result["current_phase"], "encoding")
 
     @patch("src.agents.workflow.compile_workflow")
     def test_get_current_phase(self, mock_compile):
@@ -586,6 +587,25 @@ class TestConfigWorkflow(unittest.TestCase):
         self.assertIsNone(config)
 
     @patch("src.agents.workflow.compile_workflow")
+    def test_start_with_empty_state_snapshot(self, mock_compile):
+        """Test start method handles empty state snapshot."""
+        mock_llm = MagicMock(spec=BaseChatModel)
+        mock_compiled = MagicMock()
+
+        mock_compiled.stream.return_value = iter([])
+        mock_compiled.get_state.return_value = Mock(values=None)
+
+        mock_compile.return_value = mock_compiled
+
+        workflow = ConfigWorkflow(mock_llm)
+        workflow.compiled = mock_compiled
+
+        df = pd.DataFrame({"Salary": [100]})
+        result = workflow.start(df.to_json(), ["Salary"], {"Salary": "int64"}, 1)
+
+        self.assertEqual(result, {})
+
+    @patch("src.agents.workflow.compile_workflow")
     def test_confirm_encoding_with_optional_encodings(self, mock_compile):
         """Test confirm_encoding with optional_encodings modifications."""
         mock_llm = MagicMock(spec=BaseChatModel)
@@ -622,6 +642,8 @@ class TestConfigWorkflow(unittest.TestCase):
         self.assertEqual(
             update_state_dict["optional_encodings"]["Date"]["type"], "normalize_recent"
         )
+        # Verify result contains the updated state
+        self.assertEqual(result["current_phase"], "complete")
 
 
 if __name__ == "__main__":

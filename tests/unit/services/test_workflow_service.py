@@ -449,9 +449,49 @@ class TestWorkflowService(unittest.TestCase):
         """Test _format_phase_result for classification phase."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
+        mock_workflow = MagicMock()
+        mock_workflow.current_state = {
+            "column_classification": {
+                "targets": ["Salary"],
+                "features": ["Level"],
+                "ignore": ["ID"],
+                "reasoning": "Test",
+            },
+            "classification_confirmed": False,
+            "current_phase": "classification",
+        }
+        mock_workflow_class.return_value = mock_workflow
+
+        service = WorkflowService(provider="openai")
+        service.workflow = mock_workflow
+        service.current_state = {
+            "column_classification": {
+                "targets": ["Salary"],
+                "features": ["Level"],
+                "ignore": ["ID"],
+                "reasoning": "Test",
+            },
+            "classification_confirmed": False,
+            "current_phase": "classification",
+        }
+
+        result = service._format_phase_result("classification")
+
+        self.assertEqual(result["phase"], "classification")
+        self.assertIn("data", result)
+        self.assertEqual(result["data"]["targets"], ["Salary"])
+        self.assertFalse(result["confirmed"])
+
+    @patch("src.services.workflow_service.get_langchain_llm")
+    @patch("src.services.workflow_service.ConfigWorkflow")
+    def test_format_phase_result_fallback_to_current_state(self, mock_workflow_class, mock_get_llm):
+        """Test _format_phase_result falls back to current_state when workflow is None."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
         mock_workflow_class.return_value = MagicMock()
 
         service = WorkflowService(provider="openai")
+        service.workflow = None
         service.current_state = {
             "column_classification": {
                 "targets": ["Salary"],
@@ -476,9 +516,19 @@ class TestWorkflowService(unittest.TestCase):
         """Test _format_phase_result for encoding phase."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_workflow_class.return_value = MagicMock()
+        mock_workflow = MagicMock()
+        mock_workflow.current_state = {
+            "feature_encodings": {
+                "encodings": {"Level": {"type": "ordinal"}},
+                "summary": "Test summary",
+            },
+            "encodings_confirmed": False,
+            "current_phase": "encoding",
+        }
+        mock_workflow_class.return_value = mock_workflow
 
         service = WorkflowService(provider="openai")
+        service.workflow = mock_workflow
         service.current_state = {
             "feature_encodings": {
                 "encodings": {"Level": {"type": "ordinal"}},
@@ -501,9 +551,21 @@ class TestWorkflowService(unittest.TestCase):
         """Test _format_phase_result for configuration phase."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_workflow_class.return_value = MagicMock()
+        mock_workflow = MagicMock()
+        mock_workflow.current_state = {
+            "model_config": {
+                "features": [{"name": "Level", "monotone_constraint": 1}],
+                "quantiles": [0.1, 0.5, 0.9],
+                "hyperparameters": {},
+                "reasoning": "Test",
+            },
+            "final_config": {"model": {"targets": ["Salary"]}},
+            "current_phase": "complete",
+        }
+        mock_workflow_class.return_value = mock_workflow
 
         service = WorkflowService(provider="openai")
+        service.workflow = mock_workflow
         service.current_state = {
             "model_config": {
                 "features": [{"name": "Level", "monotone_constraint": 1}],
@@ -527,9 +589,12 @@ class TestWorkflowService(unittest.TestCase):
         """Test error state formatting."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_workflow_class.return_value = MagicMock()
+        mock_workflow = MagicMock()
+        mock_workflow.current_state = {"error": "Test error", "current_phase": "classification"}
+        mock_workflow_class.return_value = mock_workflow
 
         service = WorkflowService(provider="openai")
+        service.workflow = mock_workflow
         service.current_state = {"error": "Test error", "current_phase": "classification"}
 
         result = service._format_phase_result("classification")

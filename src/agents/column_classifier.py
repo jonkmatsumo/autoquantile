@@ -1,6 +1,7 @@
 """Column classification agent that analyzes datasets and classifies columns as targets, features, or ignore."""
 
 import json
+import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from langchain_core.language_models import BaseChatModel
@@ -90,21 +91,59 @@ def parse_classification_response(response_content: str) -> Dict[str, Any]:
         if not json_str:
             raise ValueError("Empty JSON string extracted from response")
 
+        # Try to find JSON object boundaries if not already clean
+        if json_str.startswith("{") and json_str.endswith("}"):
+            pass
+        elif "{" in json_str and "}" in json_str:
+            start_idx = json_str.find("{")
+            end_idx = json_str.rfind("}") + 1
+            json_str = json_str[start_idx:end_idx]
+            logger.debug("Extracted JSON object from text")
+
         result = json.loads(json_str)
         logger.debug(
             f"Successfully parsed JSON, keys: {list(result.keys()) if isinstance(result, dict) else 'not a dict'}"
         )
 
         if "targets" not in result:
+            logger.warning("'targets' key missing from classification response, defaulting to empty list")
             result["targets"] = []
         if "features" not in result:
+            logger.warning("'features' key missing from classification response, defaulting to empty list")
             result["features"] = []
         if "ignore" not in result:
+            logger.warning("'ignore' key missing from classification response, defaulting to empty list")
             result["ignore"] = []
         if "column_types" not in result:
             result["column_types"] = {}
         if "reasoning" not in result:
             result["reasoning"] = "No reasoning provided"
+        
+        # Validate that lists contain strings and normalize them
+        if result["targets"] and not all(isinstance(t, str) for t in result["targets"]):
+            logger.warning(f"Targets contains non-string values: {result['targets']}")
+            result["targets"] = [str(t).strip() for t in result["targets"]]
+        else:
+            result["targets"] = [str(t).strip() for t in result["targets"]]
+            
+        if result["features"] and not all(isinstance(f, str) for f in result["features"]):
+            logger.warning(f"Features contains non-string values: {result['features']}")
+            result["features"] = [str(f).strip() for f in result["features"]]
+        else:
+            result["features"] = [str(f).strip() for f in result["features"]]
+            
+        if result["ignore"] and not all(isinstance(i, str) for i in result["ignore"]):
+            logger.warning(f"Ignore contains non-string values: {result['ignore']}")
+            result["ignore"] = [str(i).strip() for i in result["ignore"]]
+        else:
+            result["ignore"] = [str(i).strip() for i in result["ignore"]]
+        
+        # Remove empty strings
+        result["targets"] = [t for t in result["targets"] if t]
+        result["features"] = [f for f in result["features"] if f]
+        result["ignore"] = [i for i in result["ignore"] if i]
+        
+        logger.debug(f"Normalized classification - targets: {result['targets']}, features: {result['features']}, ignore: {result['ignore']}")
 
         if "locations" in result and result["locations"]:
             for loc_col in result["locations"]:
@@ -117,6 +156,70 @@ def parse_classification_response(response_content: str) -> Dict[str, Any]:
 
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse classification JSON: {e}")
+        logger.debug(f"JSON parse error details: {str(e)}")
+        logger.debug(f"Attempted to parse: {json_str[:500] if json_str else 'None'}")
+        
+        # Try to extract classification from the reasoning text as a fallback
+        # Look for patterns like "targets: [col1, col2]" or "Target: col1, col2"
+        extracted_targets = []
+        extracted_features = []
+        extracted_ignore = []
+        
+        # Try to find JSON-like structures in the text
+        # Look for targets/features/ignore lists in various formats
+        targets_pattern = r'(?:targets?|target\s*:)\s*\[([^\]]+)\]|(?:targets?|target\s*:)\s*([A-Za-z0-9\s,/\-]+?)(?:\n|$)'
+        features_pattern = r'(?:features?|feature\s*:)\s*\[([^\]]+)\]|(?:features?|feature\s*:)\s*([A-Za-z0-9\s,/\-]+?)(?:\n|$)'
+        ignore_pattern = r'(?:ignore|ignored)\s*\[([^\]]+)\]|(?:ignore|ignored)\s*:\s*([A-Za-z0-9\s,/\-]+?)(?:\n|$)'
+        
+        # Extract from the full response content
+        targets_match = re.search(targets_pattern, response_content, re.IGNORECASE)
+        if targets_match:
+            targets_str = targets_match.group(1) or targets_match.group(2) or ""
+            extracted_targets = [t.strip().strip('"\'') for t in re.split(r'[,;]', targets_str) if t.strip()]
+        
+        features_match = re.search(features_pattern, response_content, re.IGNORECASE)
+        if features_match:
+            features_str = features_match.group(1) or features_match.group(2) or ""
+            extracted_features = [f.strip().strip('"\'') for f in re.split(r'[,;]', features_str) if f.strip()]
+        
+        ignore_match = re.search(ignore_pattern, response_content, re.IGNORECASE)
+        if ignore_match:
+            ignore_str = ignore_match.group(1) or ignore_match.group(2) or ""
+            extracted_ignore = [i.strip().strip('"\'') for i in re.split(r'[,;]', ignore_str) if i.strip()]
+        
+        if extracted_targets or extracted_features or extracted_ignore:
+            logger.info(
+                f"Extracted classifications from text: {len(extracted_targets)} targets, "
+                f"{len(extracted_features)} features, {len(extracted_ignore)} ignore"
+            )
+            return {
+                "targets": extracted_targets,
+                "features": extracted_features,
+                "ignore": extracted_ignore,
+                "column_types": {},
+                "reasoning": response_content[:1000] if len(response_content) > 1000 else response_content,
+                "raw_response": response_content,
+            }
+        
+        # If we couldn't extract anything, check if this is an error message
+        error_indicators = ["error", "failed", "issue", "problem", "unable", "cannot", "could not"]
+        is_error_response = any(indicator in response_content.lower() for indicator in error_indicators)
+        
+        if is_error_response:
+            logger.error(
+                f"LLM returned an error message instead of classification. "
+                f"Response preview: {response_content[:500]}"
+            )
+            return {
+                "targets": [],
+                "features": [],
+                "ignore": [],
+                "column_types": {},
+                "reasoning": f"Error from LLM: {response_content[:500]}",
+                "raw_response": response_content,
+                "error": "LLM encountered an error during classification",
+            }
+        
         return {
             "targets": [],
             "features": [],
@@ -254,6 +357,14 @@ def run_column_classifier_sync(
                 result = parse_classification_response(response.content)
                 logger.info("Successfully parsed classification response")
                 logger.debug(f"Parsed result keys: {list(result.keys())}")
+                logger.info(
+                    f"Classification summary: {len(result.get('targets', []))} targets, "
+                    f"{len(result.get('features', []))} features, "
+                    f"{len(result.get('ignore', []))} ignore"
+                )
+                logger.debug(f"Targets: {result.get('targets', [])}")
+                logger.debug(f"Features: {result.get('features', [])}")
+                logger.debug(f"Ignore: {result.get('ignore', [])}")
                 log_agent_interaction(
                     "column_classifier",
                     system_prompt,

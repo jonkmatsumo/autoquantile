@@ -435,11 +435,21 @@ class ConfigWorkflow:
         config = {"configurable": {"thread_id": self.thread_id}}
 
         for event in self.compiled.stream(initial_state, config):
-            self.current_state = event
+            if isinstance(event, dict):
+                self.current_state = event
 
         state_snapshot = self.compiled.get_state(config)
-        self.current_state = dict(state_snapshot.values) if state_snapshot.values else {}
+        if state_snapshot and state_snapshot.values:
+            if isinstance(state_snapshot.values, dict):
+                self.current_state = state_snapshot.values
+            else:
+                self.current_state = dict(state_snapshot.values)
+        else:
+            self.current_state = {}
 
+        logger.debug(f"Workflow start - state keys: {list(self.current_state.keys())}")
+        logger.debug(f"Workflow start - column_classification: {self.current_state.get('column_classification', {})}")
+        
         log_workflow_state_transition("ConfigWorkflow.start", self.current_state)
         return self.current_state
 
@@ -480,10 +490,17 @@ class ConfigWorkflow:
         self.compiled.update_state(config, update_state)
 
         for event in self.compiled.stream(None, config):
-            self.current_state = event
+            if isinstance(event, dict):
+                self.current_state = event
 
         state_snapshot = self.compiled.get_state(config)
-        self.current_state = dict(state_snapshot.values) if state_snapshot.values else {}
+        if state_snapshot and state_snapshot.values:
+            if isinstance(state_snapshot.values, dict):
+                self.current_state = state_snapshot.values
+            else:
+                self.current_state = dict(state_snapshot.values)
+        else:
+            self.current_state = {}
 
         log_workflow_state_transition("ConfigWorkflow.confirm_classification", self.current_state)
         return self.current_state
@@ -507,10 +524,17 @@ class ConfigWorkflow:
         self.compiled.update_state(config, update_state)
 
         for event in self.compiled.stream(None, config):
-            self.current_state = event
+            if isinstance(event, dict):
+                self.current_state = event
 
         state_snapshot = self.compiled.get_state(config)
-        self.current_state = dict(state_snapshot.values) if state_snapshot.values else {}
+        if state_snapshot and state_snapshot.values:
+            if isinstance(state_snapshot.values, dict):
+                self.current_state = state_snapshot.values
+            else:
+                self.current_state = dict(state_snapshot.values)
+        else:
+            self.current_state = {}
 
         log_workflow_state_transition("ConfigWorkflow.confirm_encoding", self.current_state)
         return self.current_state

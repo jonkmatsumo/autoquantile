@@ -493,6 +493,56 @@ def test_render_classification_phase(mock_service_class):
 
 
 @patch("src.app.config_ui.WorkflowService")
+def test_render_classification_phase_fallback(mock_service_class):
+    """Test _render_classification_phase fallback to workflow state."""
+    from src.app.config_ui import _render_classification_phase
+
+    mock_workflow = MagicMock()
+    mock_workflow.current_state = {
+        "column_classification": {
+            "targets": ["Salary"],
+            "features": ["Level"],
+            "ignore": ["ID"],
+            "reasoning": "Fallback reasoning",
+        },
+        "column_types": {},
+    }
+    mock_service = MagicMock()
+    mock_service.workflow = mock_workflow
+    
+    result = {
+        "phase": "classification",
+        "status": "success",
+        "data": {},  # Empty data - should trigger fallback
+        "confirmed": False,
+    }
+
+    df = pd.DataFrame({"Salary": [100], "Level": ["L3"], "ID": [1]})
+
+    with patch("src.app.config_ui.st") as mock_st:
+        mock_st.subheader = MagicMock()
+        mock_st.expander.return_value.__enter__ = MagicMock()
+        mock_st.expander.return_value.__exit__ = MagicMock()
+        mock_st.markdown = MagicMock()
+        mock_st.data_editor.return_value = pd.DataFrame(
+            {
+                "Column": ["Salary", "Level", "ID"],
+                "Role": ["Target", "Feature", "Ignore"],
+                "Dtype": ["int64", "object", "int64"],
+            }
+        )
+        mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
+        mock_st.button.return_value = False
+        mock_st.rerun = MagicMock()
+
+        _render_classification_phase(mock_service, result, df)
+
+        mock_st.subheader.assert_called_with("Step 1: Column Classification")
+        # Verify that the data editor was called (classification data should be populated from fallback)
+        assert mock_st.data_editor.called
+
+
+@patch("src.app.config_ui.WorkflowService")
 def test_render_encoding_phase(mock_service_class):
     """Test _render_encoding_phase."""
     from src.app.config_ui import _render_encoding_phase

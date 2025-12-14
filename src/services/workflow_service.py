@@ -60,30 +60,33 @@ class WorkflowService:
         """Serialize DataFrame to JSON with validation and fallback. Args: df (pd.DataFrame): DataFrame to serialize. Returns: str: JSON string. Raises: ValueError: If serialization fails."""
         from src.utils.json_utils import parse_df_json_safely
 
+        # Try 'records' orient first as it's more compact and less likely to cause parsing issues
+        # when passed through LLM tool calls
         try:
-            df_json = df.to_json(orient="columns", date_format="iso")
-            logger.debug(f"Generated df_json length: {len(df_json)} characters")
+            df_json = df.to_json(orient="records", date_format="iso")
+            logger.debug(f"Generated df_json (records) length: {len(df_json)} characters")
 
             # Validate JSON can be parsed
             parsed = parse_df_json_safely(df_json)
             logger.debug(f"df_json validated successfully")
             return df_json
-        except ValueError as json_err:
-            logger.warning(f"Primary serialization failed, trying alternative: {json_err}")
+        except ValueError as records_err:
+            logger.warning(f"Records serialization failed, trying columns: {records_err}")
             try:
-                df_json = df.to_json(orient="records", date_format="iso")
-                parse_df_json_safely(df_json)
-                logger.info("Alternative serialization (orient='records') succeeded")
+                df_json = df.to_json(orient="columns", date_format="iso")
+                logger.debug(f"Generated df_json (columns) length: {len(df_json)} characters")
+                parsed = parse_df_json_safely(df_json)
+                logger.debug(f"df_json (columns) validated successfully")
                 return df_json
-            except Exception as alt_err:
+            except Exception as columns_err:
                 error_msg = (
                     f"Failed to serialize DataFrame to JSON. "
-                    f"Primary error: {json_err}. "
-                    f"Alternative error: {alt_err}. "
+                    f"Records error: {records_err}. "
+                    f"Columns error: {columns_err}. "
                     f"Please check your data for unsupported types or encoding issues."
                 )
                 logger.error(error_msg)
-                raise ValueError(error_msg) from json_err
+                raise ValueError(error_msg) from records_err
 
     def start_workflow(
         self, df: pd.DataFrame, sample_size: int = 50, preset: Optional[str] = None
@@ -110,21 +113,41 @@ class WorkflowService:
 
         try:
             logger.info("Calling workflow.start()...")
-            self.current_state = self.workflow.start(
+            workflow_state = self.workflow.start(
                 df_json=df_json,
                 columns=columns,
                 dtypes=dtypes,
                 dataset_size=dataset_size,
                 preset=preset,
             )
+            self.current_state = workflow_state
             logger.info("Workflow started successfully")
             logger.debug(f"Current state keys: {list(self.current_state.keys())}")
+            logger.debug(f"Column classification keys: {list(self.current_state.get('column_classification', {}).keys())}")
 
             error_value = self.current_state.get("error")
             if error_value:
                 logger.error(f"Workflow state contains error: {error_value}")
             else:
                 logger.debug("Workflow state has no errors")
+                classification = self.current_state.get("column_classification", {})
+                targets = classification.get("targets", [])
+                features = classification.get("features", [])
+                ignore = classification.get("ignore", [])
+                logger.info(
+                    f"Classification result: {len(targets)} targets, {len(features)} features, {len(ignore)} ignore"
+                )
+                logger.debug(f"Classification targets: {targets}")
+                logger.debug(f"Classification features: {features}")
+                logger.debug(f"Classification ignore: {ignore}")
+                
+                if not targets and not features and not ignore:
+                    logger.warning(
+                        "WARNING: Classification result is empty! All columns will show as Unclassified. "
+                        "This may indicate a parsing issue with the LLM response."
+                    )
+                    logger.debug(f"Full classification dict: {classification}")
+                    logger.debug(f"Reasoning present: {bool(classification.get('reasoning'))}")
 
             return self._format_phase_result("classification")
 
@@ -218,35 +241,37 @@ class WorkflowService:
 
     def _format_phase_result(self, phase: str) -> Dict[str, Any]:
         """Format the current state for UI consumption. Args: phase (str): Current phase name. Returns: Dict[str, Any]: Formatted result dictionary."""
+        state = self.workflow.current_state if self.workflow and self.workflow.current_state else self.current_state
+        
         result = {
             "phase": phase,
-            "status": "success" if not self.current_state.get("error") else "error",
+            "status": "success" if not state.get("error") else "error",
         }
 
-        if self.current_state.get("error"):
-            result["error"] = self.current_state["error"]
+        if state.get("error"):
+            result["error"] = state["error"]
 
         if phase == "classification" or phase == "starting":
-            classification = self.current_state.get("column_classification", {})
+            classification = state.get("column_classification", {})
             result["data"] = {
                 "targets": classification.get("targets", []),
                 "features": classification.get("features", []),
                 "ignore": classification.get("ignore", []),
                 "reasoning": classification.get("reasoning", ""),
             }
-            result["confirmed"] = self.current_state.get("classification_confirmed", False)
+            result["confirmed"] = state.get("classification_confirmed", False)
 
         elif phase == "encoding":
-            encodings = self.current_state.get("feature_encodings", {})
+            encodings = state.get("feature_encodings", {})
             result["data"] = {
                 "encodings": encodings.get("encodings", {}),
                 "summary": encodings.get("summary", ""),
             }
-            result["confirmed"] = self.current_state.get("encodings_confirmed", False)
+            result["confirmed"] = state.get("encodings_confirmed", False)
 
         elif phase == "configuration" or phase == "complete":
-            model_config = self.current_state.get("model_config", {})
-            final_config = self.current_state.get("final_config")
+            model_config = state.get("model_config", {})
+            final_config = state.get("final_config")
 
             result["data"] = {
                 "features": model_config.get("features", []),
