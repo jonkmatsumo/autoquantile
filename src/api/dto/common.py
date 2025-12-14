@@ -11,6 +11,7 @@ class BaseResponse(BaseModel):
 
     status: str = Field(default="success", description="Response status")
     message: Optional[str] = Field(default=None, description="Optional message")
+    data: Optional[Dict[str, Any]] = Field(default=None, description="Response data")
 
 
 class ErrorDetail(BaseModel):

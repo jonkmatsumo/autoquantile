@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelMetadata(BaseModel):
@@ -49,16 +49,20 @@ class ModelSchema(BaseModel):
 class ModelSchemaResponse(BaseModel):
     """Response containing model schema."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     run_id: str = Field(..., description="MLflow run ID")
-    schema: ModelSchema = Field(..., description="Model schema")
+    model_schema: ModelSchema = Field(..., alias="schema", description="Model schema")
 
 
 class ModelDetailsResponse(BaseModel):
     """Complete model details including metadata and schema."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     run_id: str = Field(..., description="MLflow run ID")
     metadata: ModelMetadata = Field(..., description="Model metadata")
-    schema: ModelSchema = Field(..., description="Model schema")
+    model_schema: ModelSchema = Field(..., alias="schema", description="Model schema")
     feature_names: List[str] = Field(..., description="All feature names")
     targets: List[str] = Field(..., description="Target column names")
     quantiles: List[float] = Field(
