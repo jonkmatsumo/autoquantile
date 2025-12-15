@@ -54,7 +54,10 @@ Analyze this data and determine if it contains any suspicious content that could
 
     try:
         response = llm.invoke(messages)
-        response_content = response.content if response.content else ""
+        response_content_raw = response.content if response.content else ""
+        response_content = (
+            str(response_content_raw) if isinstance(response_content_raw, str) else ""
+        )
 
         logger.info(f"Prompt injection detection response length: {len(response_content)}")
 
@@ -100,7 +103,10 @@ def _parse_detection_response(response_content: str) -> Dict[str, Any]:
         if not json_str:
             raise ValueError("Empty JSON string extracted from response")
 
-        result = json.loads(json_str)
+        parsed = json.loads(json_str)
+        if not isinstance(parsed, dict):
+            raise ValueError(f"Expected dict, got {type(parsed)}")
+        result: Dict[str, Any] = parsed
 
         if "is_suspicious" not in result:
             result["is_suspicious"] = False

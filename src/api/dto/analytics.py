@@ -18,9 +18,7 @@ class DataSummary(BaseModel):
 class DataSummaryRequest(BaseModel):
     """Request for data summary."""
 
-    data: str = Field(
-        ..., description="JSON string of DataFrame (records orient)", min_length=1
-    )
+    data: str = Field(..., description="JSON string of DataFrame (records orient)", min_length=1)
 
 
 class DataSummaryResponse(BaseModel):
@@ -46,4 +44,3 @@ class FeatureImportanceResponse(BaseModel):
     features: List[FeatureImportance] = Field(
         ..., description="List of features with importance scores"
     )
-

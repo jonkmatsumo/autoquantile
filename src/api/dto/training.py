@@ -58,9 +58,7 @@ class TrainingResult(BaseModel):
 
     run_id: str = Field(..., description="MLflow run ID")
     model_type: str = Field(default="XGBoost", description="Model type")
-    cv_mean_score: Optional[float] = Field(
-        default=None, description="Cross-validation mean score"
-    )
+    cv_mean_score: Optional[float] = Field(default=None, description="Cross-validation mean score")
 
 
 class TrainingJobStatusResponse(BaseModel):
@@ -70,9 +68,7 @@ class TrainingJobStatusResponse(BaseModel):
     status: Literal["QUEUED", "RUNNING", "COMPLETED", "FAILED"] = Field(
         ..., description="Current job status"
     )
-    progress: float = Field(
-        default=0.0, ge=0.0, le=1.0, description="Training progress (0.0-1.0)"
-    )
+    progress: float = Field(default=0.0, ge=0.0, le=1.0, description="Training progress (0.0-1.0)")
     logs: List[str] = Field(default_factory=list, description="Training logs")
     submitted_at: Optional[datetime] = Field(default=None, description="Job submission time")
     completed_at: Optional[datetime] = Field(default=None, description="Job completion time")
@@ -80,9 +76,7 @@ class TrainingJobStatusResponse(BaseModel):
         default=None, description="Training result (if completed)"
     )
     error: Optional[str] = Field(default=None, description="Error message (if failed)")
-    run_id: Optional[str] = Field(
-        default=None, description="MLflow run ID (if completed)"
-    )
+    run_id: Optional[str] = Field(default=None, description="MLflow run ID (if completed)")
 
 
 class TrainingJobSummary(BaseModel):
@@ -95,4 +89,3 @@ class TrainingJobSummary(BaseModel):
     submitted_at: datetime = Field(..., description="Job submission time")
     completed_at: Optional[datetime] = Field(default=None, description="Job completion time")
     run_id: Optional[str] = Field(default=None, description="MLflow run ID if completed")
-

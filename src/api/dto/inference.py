@@ -3,15 +3,13 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class PredictionRequest(BaseModel):
     """Request for a single prediction."""
 
-    features: Dict[str, Any] = Field(
-        ..., description="Feature name to value mapping", min_length=1
-    )
+    features: Dict[str, Any] = Field(..., description="Feature name to value mapping", min_length=1)
 
 
 class PredictionMetadata(BaseModel):
@@ -45,8 +43,5 @@ class BatchPredictionRequest(BaseModel):
 class BatchPredictionResponse(BaseModel):
     """Response containing batch prediction results."""
 
-    predictions: List[PredictionResponse] = Field(
-        ..., description="List of prediction responses"
-    )
+    predictions: List[PredictionResponse] = Field(..., description="List of prediction responses")
     total: int = Field(..., description="Total number of predictions", ge=0)
-

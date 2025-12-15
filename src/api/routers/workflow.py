@@ -16,7 +16,7 @@ from src.api.dto.workflow import (
     WorkflowStateResponse,
 )
 from src.api.dependencies import get_current_user
-from src.api.exceptions import WorkflowInvalidStateError, WorkflowNotFoundError
+from src.api.exceptions import WorkflowNotFoundError
 from src.services.workflow_service import WorkflowService
 from src.utils.logger import get_logger
 
@@ -190,11 +190,12 @@ async def finalize_configuration(
     if not final_config:
         from src.api.exceptions import InvalidInputError
 
-        raise InvalidInputError("No final configuration available. Ensure workflow is in configuration phase.")
+        raise InvalidInputError(
+            "No final configuration available. Ensure workflow is in configuration phase."
+        )
 
     final_config["model"]["features"] = [
-        {"name": f.name, "monotone_constraint": f.monotone_constraint}
-        for f in request.features
+        {"name": f.name, "monotone_constraint": f.monotone_constraint} for f in request.features
     ]
     final_config["model"]["quantiles"] = request.quantiles
     final_config["model"]["hyperparameters"] = {
@@ -210,4 +211,3 @@ async def finalize_configuration(
         phase="complete",
         final_config=final_config,
     )
-

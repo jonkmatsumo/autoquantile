@@ -16,7 +16,7 @@ def test_start_workflow_works_without_auth_when_key_not_set(mock_get_llm, client
     """Test that start workflow works without auth when API_KEY not set (development mode). Args: mock_get_llm: Mock LLM getter. client_no_auth: Test client without auth."""
     mock_llm = MagicMock()
     mock_get_llm.return_value = mock_llm
-    
+
     sample_data = json.dumps([{"col1": 1, "col2": "a"}])
     response = client_no_auth.post(
         "/api/v1/workflow/start",
@@ -35,7 +35,7 @@ def test_get_workflow_state_works_without_auth_when_key_not_set(mock_get_llm, cl
     """Test that get workflow state works without auth when API_KEY not set (development mode). Args: mock_get_llm: Mock LLM getter. client_no_auth: Test client without auth."""
     mock_llm = MagicMock()
     mock_get_llm.return_value = mock_llm
-    
+
     response = client_no_auth.get("/api/v1/workflow/test123")
     assert response.status_code in [200, 401, 404]
 
@@ -50,4 +50,3 @@ def test_get_workflow_state_not_found(client, api_key):
     data = response.json()
     assert data["status"] == "error"
     assert data["error"]["code"] == "WORKFLOW_NOT_FOUND"
-

@@ -448,8 +448,10 @@ class ConfigWorkflow:
             self.current_state = {}
 
         logger.debug(f"Workflow start - state keys: {list(self.current_state.keys())}")
-        logger.debug(f"Workflow start - column_classification: {self.current_state.get('column_classification', {})}")
-        
+        logger.debug(
+            f"Workflow start - column_classification: {self.current_state.get('column_classification', {})}"
+        )
+
         log_workflow_state_transition("ConfigWorkflow.start", self.current_state)
         return self.current_state
 

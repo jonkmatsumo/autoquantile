@@ -32,13 +32,9 @@ def mock_model():
     model.targets = ["BaseSalary", "TotalComp"]
     model.quantiles = [0.1, 0.25, 0.5, 0.75, 0.9]
     model.feature_names = ["Level", "Location", "YearsOfExperience"]
-    model.ranked_encoders = {
-        "Level": MagicMock(mapping={"L3": 0, "L4": 1, "L5": 2})
-    }
+    model.ranked_encoders = {"Level": MagicMock(mapping={"L3": 0, "L4": 1, "L5": 2})}
     model.proximity_encoders = {"Location": MagicMock()}
-    model.predict.return_value = {
-        "BaseSalary": {"p10": 150000.0, "p50": 180000.0, "p90": 220000.0}
-    }
+    model.predict.return_value = {"BaseSalary": {"p10": 150000.0, "p50": 180000.0, "p90": 220000.0}}
     return model
 
 
@@ -108,21 +104,23 @@ def test_mcp_list_models_tool(client):
     """Test list_models tool call."""
     with patch("src.api.mcp.server.MCPToolHandler") as MockHandler:
         mock_handler = MagicMock()
-        mock_handler.handle_tool_call = AsyncMock(return_value={
-            "models": [
-                {
-                    "run_id": "test123",
-                    "start_time": "2024-01-01T00:00:00",
-                    "model_type": "XGBoost",
-                    "cv_mean_score": 0.85,
-                    "dataset_name": "test_data",
-                    "additional_tag": None,
-                }
-            ],
-            "total": 1,
-            "limit": 10,
-            "offset": 0,
-        })
+        mock_handler.handle_tool_call = AsyncMock(
+            return_value={
+                "models": [
+                    {
+                        "run_id": "test123",
+                        "start_time": "2024-01-01T00:00:00",
+                        "model_type": "XGBoost",
+                        "cv_mean_score": 0.85,
+                        "dataset_name": "test_data",
+                        "additional_tag": None,
+                    }
+                ],
+                "total": 1,
+                "limit": 10,
+                "offset": 0,
+            }
+        )
         MockHandler.return_value = mock_handler
 
         response = client.post(
@@ -150,24 +148,26 @@ def test_mcp_get_model_details_tool(client, mock_model):
     """Test get_model_details tool call."""
     with patch("src.api.mcp.server.MCPToolHandler") as MockHandler:
         mock_handler = MagicMock()
-        mock_handler.handle_tool_call = AsyncMock(return_value={
-            "run_id": "test123",
-            "metadata": {
+        mock_handler.handle_tool_call = AsyncMock(
+            return_value={
                 "run_id": "test123",
-                "start_time": "2024-01-01T00:00:00",
-                "model_type": "XGBoost",
-                "cv_mean_score": 0.85,
-                "dataset_name": "test_data",
-            },
-            "model_schema": {
-                "ranked_features": [],
-                "proximity_features": [],
-                "numerical_features": [],
-            },
-            "feature_names": ["Level", "Location"],
-            "targets": ["BaseSalary"],
-            "quantiles": [0.1, 0.5, 0.9],
-        })
+                "metadata": {
+                    "run_id": "test123",
+                    "start_time": "2024-01-01T00:00:00",
+                    "model_type": "XGBoost",
+                    "cv_mean_score": 0.85,
+                    "dataset_name": "test_data",
+                },
+                "model_schema": {
+                    "ranked_features": [],
+                    "proximity_features": [],
+                    "numerical_features": [],
+                },
+                "feature_names": ["Level", "Location"],
+                "targets": ["BaseSalary"],
+                "quantiles": [0.1, 0.5, 0.9],
+            }
+        )
         MockHandler.return_value = mock_handler
 
         response = client.post(
@@ -196,15 +196,17 @@ def test_mcp_predict_salary_tool(client, mock_model):
     """Test predict_salary tool call."""
     with patch("src.api.mcp.server.MCPToolHandler") as MockHandler:
         mock_handler = MagicMock()
-        mock_handler.handle_tool_call = AsyncMock(return_value={
-            "status": "success",
-            "data": {
-                "predictions": {
-                    "BaseSalary": {"p10": 150000.0, "p50": 180000.0, "p90": 220000.0}
+        mock_handler.handle_tool_call = AsyncMock(
+            return_value={
+                "status": "success",
+                "data": {
+                    "predictions": {
+                        "BaseSalary": {"p10": 150000.0, "p50": 180000.0, "p90": 220000.0}
+                    },
+                    "metadata": {},
                 },
-                "metadata": {},
-            },
-        })
+            }
+        )
         MockHandler.return_value = mock_handler
 
         response = client.post(
@@ -321,17 +323,19 @@ def test_mcp_get_training_status_tool(client):
     """Test get_training_status tool call."""
     with patch("src.api.mcp.server.MCPToolHandler") as MockHandler:
         mock_handler = MagicMock()
-        mock_handler.handle_tool_call = AsyncMock(return_value={
-            "job_id": "job123",
-            "status": "COMPLETED",
-            "progress": 1.0,
-            "logs": ["Training started", "Training completed"],
-            "submitted_at": "2024-01-01T00:00:00",
-            "completed_at": "2024-01-01T01:00:00",
-            "result": {"run_id": "model123"},
-            "error": None,
-            "run_id": "model123",
-        })
+        mock_handler.handle_tool_call = AsyncMock(
+            return_value={
+                "job_id": "job123",
+                "status": "COMPLETED",
+                "progress": 1.0,
+                "logs": ["Training started", "Training completed"],
+                "submitted_at": "2024-01-01T00:00:00",
+                "completed_at": "2024-01-01T01:00:00",
+                "result": {"run_id": "model123"},
+                "error": None,
+                "run_id": "model123",
+            }
+        )
         MockHandler.return_value = mock_handler
 
         response = client.post(
@@ -359,12 +363,14 @@ def test_mcp_get_feature_importance_tool(client, mock_model):
     """Test get_feature_importance tool call."""
     with patch("src.api.mcp.server.MCPToolHandler") as MockHandler:
         mock_handler = MagicMock()
-        mock_handler.handle_tool_call = AsyncMock(return_value={
-            "features": [
-                {"name": "Level", "gain": 0.5},
-                {"name": "Location", "gain": 0.3},
-            ]
-        })
+        mock_handler.handle_tool_call = AsyncMock(
+            return_value={
+                "features": [
+                    {"name": "Level", "gain": 0.5},
+                    {"name": "Location", "gain": 0.3},
+                ]
+            }
+        )
         MockHandler.return_value = mock_handler
 
         response = client.post(
@@ -395,23 +401,26 @@ def test_mcp_start_configuration_workflow_tool(client):
     """Test start_configuration_workflow tool call."""
     with patch("src.api.mcp.server.MCPToolHandler") as MockHandler:
         mock_handler = MagicMock()
-        mock_handler.handle_tool_call = AsyncMock(return_value={
-            "workflow_id": "workflow123",
-            "phase": "classification",
-            "state": {
+        mock_handler.handle_tool_call = AsyncMock(
+            return_value={
+                "workflow_id": "workflow123",
                 "phase": "classification",
-                "status": "success",
-                "current_result": {
-                    "targets": ["Salary"],
-                    "features": ["Level"],
-                    "ignore": [],
-                    "reasoning": "Test reasoning",
+                "state": {
+                    "phase": "classification",
+                    "status": "success",
+                    "current_result": {
+                        "targets": ["Salary"],
+                        "features": ["Level"],
+                        "ignore": [],
+                        "reasoning": "Test reasoning",
+                    },
                 },
-            },
-        })
+            }
+        )
         MockHandler.return_value = mock_handler
 
         import pandas as pd
+
         test_df = pd.DataFrame({"Salary": [100000], "Level": ["L3"]})
         df_json = test_df.to_json(orient="records", date_format="iso")
 
@@ -494,5 +503,6 @@ def test_mcp_tool_has_required_fields(client):
         assert "name" in tool, f"Tool missing 'name': {tool}"
         assert "description" in tool, f"Tool {tool.get('name')} missing 'description'"
         assert "inputSchema" in tool, f"Tool {tool.get('name')} missing 'inputSchema'"
-        assert tool["inputSchema"]["type"] == "object", f"Tool {tool.get('name')} inputSchema must be object type"
-
+        assert (
+            tool["inputSchema"]["type"] == "object"
+        ), f"Tool {tool.get('name')} inputSchema must be object type"

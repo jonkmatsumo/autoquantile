@@ -65,7 +65,11 @@ class GeoMapper:
             try:
                 with open(self.cache_file, "r") as f:
                     data = json.load(f)
-                    return {k: tuple(v) for k, v in data.items()}
+                    return {
+                        k: (float(v[0]), float(v[1]))
+                        for k, v in data.items()
+                        if isinstance(v, (list, tuple)) and len(v) >= 2
+                    }
             except json.JSONDecodeError:
                 return {}
         return {}
@@ -77,7 +81,8 @@ class GeoMapper:
     def _get_coords(self, city: str) -> Optional[Tuple[float, float]]:
         """Get coordinates for a city. Args: city (str): City name. Returns: Optional[Tuple[float, float]]: (latitude, longitude) or None."""
         if city in self.cache:
-            return tuple(self.cache[city])
+            coords = self.cache[city]
+            return (coords[0], coords[1])
 
         max_retries = 3
         for attempt in range(max_retries):

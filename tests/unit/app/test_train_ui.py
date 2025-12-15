@@ -9,6 +9,7 @@ from src.app.train_ui import render_training_ui
 # Import conftest function directly (pytest will handle the path)
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from conftest import create_test_config
 
@@ -286,7 +287,9 @@ class TestConfigValidationInTrainUI(unittest.TestCase):
         self.mock_st_patcher = patch("src.app.train_ui.st")
         self.mock_st = self.mock_st_patcher.start()
         self.mock_st.session_state = {}
-        self.mock_st.columns.side_effect = lambda n: [MagicMock() for _ in range(n if isinstance(n, int) else len(n))]
+        self.mock_st.columns.side_effect = lambda n: [
+            MagicMock() for _ in range(n if isinstance(n, int) else len(n))
+        ]
         self.mock_st.expander.return_value.__enter__.return_value = MagicMock()
         self.mock_st.selectbox.return_value = "Overview Metrics"
 
@@ -360,7 +363,11 @@ class TestConfigValidationInTrainUI(unittest.TestCase):
             "config_override": config,  # Valid config
         }
 
-        self.mock_st.checkbox.side_effect = [False, True, True]  # do_tune, remove_outliers, display_charts
+        self.mock_st.checkbox.side_effect = [
+            False,
+            True,
+            True,
+        ]  # do_tune, remove_outliers, display_charts
         self.mock_st.number_input.return_value = 20
         self.mock_st.text_input.return_value = "tag-v1"
         self.mock_st.button.side_effect = lambda label, **kwargs: "Start Training" in str(label)
@@ -386,11 +393,13 @@ class TestConfigValidationInTrainUI(unittest.TestCase):
             "workflow_phase": "complete",
             "config_override": config,
         }
+
         # Mock button to return False for "Re-run Configuration Wizard"
         def button_side_effect(label, **kwargs):
             if "Re-run Configuration Wizard" in str(label):
                 return False
             return False
+
         self.mock_st.button.side_effect = button_side_effect
 
         with patch("src.app.train_ui.render_workflow_wizard") as mock_wizard:
@@ -420,14 +429,22 @@ class TestConfigValidationInTrainUI(unittest.TestCase):
             if "Re-run Configuration Wizard" in str(label):
                 return False
             return "Start Training" in str(label)
+
         self.mock_st.button.side_effect = button_side_effect
 
         render_training_ui()
 
         # Check for user-friendly error message
-        error_calls = [call[0][0] if call[0] else str(call) for call in self.mock_st.error.call_args_list]
+        error_calls = [
+            call[0][0] if call[0] else str(call) for call in self.mock_st.error.call_args_list
+        ]
         found_user_error = any(
-            "Configuration" in str(call) and ("required" in str(call).lower() or "missing" in str(call).lower() or "invalid" in str(call).lower())
+            "Configuration" in str(call)
+            and (
+                "required" in str(call).lower()
+                or "missing" in str(call).lower()
+                or "invalid" in str(call).lower()
+            )
             for call in error_calls
         )
         assert found_user_error, "Should show user-friendly error about missing configuration"
@@ -446,6 +463,7 @@ class TestConfigValidationInTrainUI(unittest.TestCase):
             if "Re-run Configuration Wizard" in str(label):
                 return False
             return "Start Training" in str(label)
+
         self.mock_st.button.side_effect = button_side_effect
 
         with patch("src.app.train_ui.get_training_service") as mock_get_svc:
@@ -488,5 +506,7 @@ class TestConfigValidationInTrainUI(unittest.TestCase):
 
             # Should show error message
             error_calls = [str(call) for call in self.mock_st.error.call_args_list]
-            found_config_error = any("Configuration" in call or "error" in call.lower() for call in error_calls)
+            found_config_error = any(
+                "Configuration" in call or "error" in call.lower() for call in error_calls
+            )
             assert found_config_error, "Should show error when config validation fails"

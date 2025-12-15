@@ -2,7 +2,7 @@
 
 import json
 import re
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -244,7 +244,7 @@ def detect_ordinal_patterns(df_json: str, column: str) -> str:
     unique_values = df[column].dropna().unique().tolist()
     unique_values = [str(v) for v in unique_values]
 
-    result = {
+    result: Dict[str, Any] = {
         "column": column,
         "unique_values": unique_values,
         "patterns_detected": [],

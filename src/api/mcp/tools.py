@@ -2,15 +2,6 @@
 
 from typing import Any, Dict, List
 
-from src.api.dto.inference import PredictionRequest, PredictionResponse
-from src.api.dto.models import ModelMetadata, ModelSchemaResponse
-from src.api.dto.training import TrainingJobRequest, TrainingJobResponse
-from src.api.dto.workflow import WorkflowStartRequest, WorkflowStartResponse
-from src.services.analytics_service import AnalyticsService
-from src.services.inference_service import InferenceService
-from src.services.model_registry import ModelRegistry
-from src.services.training_service import TrainingService
-from src.services.workflow_service import WorkflowService
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -472,4 +463,3 @@ def _tool_get_feature_importance() -> MCPTool:
             }
         ],
     )
-

@@ -335,7 +335,11 @@ def test_render_save_load_controls_json_export_only():
         # Verify info message about JSON loading being removed
         mock_st.info.assert_called_once()
         info_call = str(mock_st.info.call_args)
-        assert "JSON" in info_call or "deprecated" in info_call.lower() or "removed" in info_call.lower()
+        assert (
+            "JSON" in info_call
+            or "deprecated" in info_call.lower()
+            or "removed" in info_call.lower()
+        )
 
         # Verify file uploader was NOT called (loading removed)
         if hasattr(mock_st, "file_uploader"):
@@ -512,7 +516,7 @@ def test_render_classification_phase_fallback(mock_get_workflow_service):
     }
     mock_service = MagicMock()
     mock_service.workflow = mock_workflow
-    
+
     result = {
         "phase": "classification",
         "status": "success",

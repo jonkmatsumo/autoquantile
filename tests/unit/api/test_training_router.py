@@ -38,50 +38,56 @@ class TestUploadTrainingData:
         """Test df is None after validation raises InvalidInputError."""
         mock_file = MagicMock()
         mock_file.filename = "test.csv"
-        
+
         async def mock_read():
             return b"col1,col2\n1,2"
+
         mock_file.read = mock_read
-        
+
         training_service = MagicMock(spec=TrainingService)
         training_service.validate_csv_file.return_value = (True, None, None)
-        
+
         analytics_service = MagicMock(spec=AnalyticsService)
-        
+
         with pytest.raises(InvalidInputError) as exc_info:
-            asyncio.run(upload_training_data(
-                file=mock_file,
-                dataset_name=None,
-                user="test_user",
-                training_service=training_service,
-                analytics_service=analytics_service,
-            ))
-        
+            asyncio.run(
+                upload_training_data(
+                    file=mock_file,
+                    dataset_name=None,
+                    user="test_user",
+                    training_service=training_service,
+                    analytics_service=analytics_service,
+                )
+            )
+
         assert "Failed to parse CSV file" in str(exc_info.value.message)
 
     def test_upload_training_data_invalid_file(self):
         """Test invalid CSV file raises InvalidInputError."""
         mock_file = MagicMock()
         mock_file.filename = "test.csv"
-        
+
         async def mock_read():
             return b"invalid"
+
         mock_file.read = mock_read
-        
+
         training_service = MagicMock(spec=TrainingService)
         training_service.validate_csv_file.return_value = (False, "Invalid format", None)
-        
+
         analytics_service = MagicMock(spec=AnalyticsService)
-        
+
         with pytest.raises(InvalidInputError) as exc_info:
-            asyncio.run(upload_training_data(
-                file=mock_file,
-                dataset_name=None,
-                user="test_user",
-                training_service=training_service,
-                analytics_service=analytics_service,
-            ))
-        
+            asyncio.run(
+                upload_training_data(
+                    file=mock_file,
+                    dataset_name=None,
+                    user="test_user",
+                    training_service=training_service,
+                    analytics_service=analytics_service,
+                )
+            )
+
         assert "Invalid format" in str(exc_info.value.message)
 
 
@@ -91,15 +97,17 @@ class TestStartTraining:
     def test_start_training_dataset_not_found(self):
         """Test dataset not found raises InvalidInputError."""
         training_service = MagicMock(spec=TrainingService)
-        
+
         request = TrainingJobRequest(
             dataset_id="nonexistent",
             config={"model": {"targets": ["target1"]}},
         )
-        
+
         with pytest.raises(InvalidInputError) as exc_info:
-            asyncio.run(start_training(request, user="test_user", training_service=training_service))
-        
+            asyncio.run(
+                start_training(request, user="test_user", training_service=training_service)
+            )
+
         assert "nonexistent" in str(exc_info.value.message)
         assert "not found" in str(exc_info.value.message)
 
@@ -108,18 +116,20 @@ class TestStartTraining:
         df = pd.DataFrame({"col1": [1, 2]})
         storage = get_dataset_storage()
         storage.store("test_dataset", df)
-        
+
         training_service = MagicMock(spec=TrainingService)
         training_service.start_training_async.side_effect = ValueError("Invalid config")
-        
+
         request = TrainingJobRequest(
             dataset_id="test_dataset",
             config={"model": {"targets": ["target1"]}},
         )
-        
+
         with pytest.raises(InvalidInputError) as exc_info:
-            asyncio.run(start_training(request, user="test_user", training_service=training_service))
-        
+            asyncio.run(
+                start_training(request, user="test_user", training_service=training_service)
+            )
+
         assert "Invalid config" in str(exc_info.value.message)
         assert exc_info.value.__cause__ is not None
 
@@ -131,10 +141,14 @@ class TestGetTrainingJobStatus:
         """Test job not found raises TrainingJobNotFoundError."""
         training_service = MagicMock(spec=TrainingService)
         training_service.get_job_status.return_value = None
-        
+
         with pytest.raises(TrainingJobNotFoundError) as exc_info:
-            asyncio.run(get_training_job_status("nonexistent", user="test_user", training_service=training_service))
-        
+            asyncio.run(
+                get_training_job_status(
+                    "nonexistent", user="test_user", training_service=training_service
+                )
+            )
+
         assert "nonexistent" in str(exc_info.value.message)
 
     def test_get_training_job_status_completed_with_run_id_and_scores(self):
@@ -148,9 +162,11 @@ class TestGetTrainingJobStatus:
             "submitted_at": datetime(2023, 1, 1),
             "completed_at": datetime(2023, 1, 2),
         }
-        
-        response = asyncio.run(get_training_job_status("job123", user="test_user", training_service=training_service))
-        
+
+        response = asyncio.run(
+            get_training_job_status("job123", user="test_user", training_service=training_service)
+        )
+
         assert response.status == "COMPLETED"
         assert response.progress == 1.0
         assert response.run_id == "run123"
@@ -166,9 +182,11 @@ class TestGetTrainingJobStatus:
             "logs": ["log1"],
             "submitted_at": datetime(2023, 1, 1),
         }
-        
-        response = asyncio.run(get_training_job_status("job123", user="test_user", training_service=training_service))
-        
+
+        response = asyncio.run(
+            get_training_job_status("job123", user="test_user", training_service=training_service)
+        )
+
         assert response.status == "RUNNING"
         assert response.progress == 0.5
 
@@ -181,9 +199,11 @@ class TestGetTrainingJobStatus:
             "submitted_at": datetime(2023, 1, 1),
             "completed_at": datetime(2023, 1, 2),
         }
-        
-        response = asyncio.run(get_training_job_status("job123", user="test_user", training_service=training_service))
-        
+
+        response = asyncio.run(
+            get_training_job_status("job123", user="test_user", training_service=training_service)
+        )
+
         assert response.status == "COMPLETED"
         assert response.progress == 1.0
 
@@ -194,9 +214,11 @@ class TestGetTrainingJobStatus:
             "status": "QUEUED",
             "submitted_at": datetime(2023, 1, 1),
         }
-        
-        response = asyncio.run(get_training_job_status("job123", user="test_user", training_service=training_service))
-        
+
+        response = asyncio.run(
+            get_training_job_status("job123", user="test_user", training_service=training_service)
+        )
+
         assert response.status == "QUEUED"
         assert response.progress == 0.0
 
@@ -208,9 +230,11 @@ class TestGetTrainingJobStatus:
             "error": "Training failed",
             "submitted_at": datetime(2023, 1, 1),
         }
-        
-        response = asyncio.run(get_training_job_status("job123", user="test_user", training_service=training_service))
-        
+
+        response = asyncio.run(
+            get_training_job_status("job123", user="test_user", training_service=training_service)
+        )
+
         assert response.status == "FAILED"
         assert response.progress == 0.0
         assert response.error == "Training failed"
@@ -225,9 +249,11 @@ class TestGetTrainingJobStatus:
             "submitted_at": datetime(2023, 1, 1),
             "completed_at": datetime(2023, 1, 2),
         }
-        
-        response = asyncio.run(get_training_job_status("job123", user="test_user", training_service=training_service))
-        
+
+        response = asyncio.run(
+            get_training_job_status("job123", user="test_user", training_service=training_service)
+        )
+
         assert response.result is not None
         assert response.result.cv_mean_score is None
 
@@ -256,15 +282,17 @@ class TestListTrainingJobs:
                 "run_id": "run3",
             },
         }
-        
-        response = asyncio.run(list_training_jobs(
-            limit=50,
-            offset=0,
-            status="COMPLETED",
-            user="test_user",
-            training_service=training_service,
-        ))
-        
+
+        response = asyncio.run(
+            list_training_jobs(
+                limit=50,
+                offset=0,
+                status="COMPLETED",
+                user="test_user",
+                training_service=training_service,
+            )
+        )
+
         assert response.status == "success"
         assert len(response.data["jobs"]) == 2
         assert all(job["status"] == "COMPLETED" for job in response.data["jobs"])
@@ -280,15 +308,17 @@ class TestListTrainingJobs:
             }
             for i in range(1, 11)
         }
-        
-        response = asyncio.run(list_training_jobs(
-            limit=3,
-            offset=2,
-            status=None,
-            user="test_user",
-            training_service=training_service,
-        ))
-        
+
+        response = asyncio.run(
+            list_training_jobs(
+                limit=3,
+                offset=2,
+                status=None,
+                user="test_user",
+                training_service=training_service,
+            )
+        )
+
         assert response.status == "success"
         assert len(response.data["jobs"]) == 3
         assert response.data["pagination"]["total"] == 10
@@ -306,15 +336,17 @@ class TestListTrainingJobs:
             }
             for i in range(1, 6)
         }
-        
-        response = asyncio.run(list_training_jobs(
-            limit=3,
-            offset=3,
-            status=None,
-            user="test_user",
-            training_service=training_service,
-        ))
-        
+
+        response = asyncio.run(
+            list_training_jobs(
+                limit=3,
+                offset=3,
+                status=None,
+                user="test_user",
+                training_service=training_service,
+            )
+        )
+
         assert response.status == "success"
         assert len(response.data["jobs"]) == 2
         assert response.data["pagination"]["has_more"] is False
@@ -323,17 +355,18 @@ class TestListTrainingJobs:
         """Test pagination with empty list."""
         training_service = MagicMock(spec=TrainingService)
         training_service._jobs = {}
-        
-        response = asyncio.run(list_training_jobs(
-            limit=50,
-            offset=0,
-            status=None,
-            user="test_user",
-            training_service=training_service,
-        ))
-        
+
+        response = asyncio.run(
+            list_training_jobs(
+                limit=50,
+                offset=0,
+                status=None,
+                user="test_user",
+                training_service=training_service,
+            )
+        )
+
         assert response.status == "success"
         assert len(response.data["jobs"]) == 0
         assert response.data["pagination"]["total"] == 0
         assert response.data["pagination"]["has_more"] is False
-

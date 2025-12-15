@@ -12,6 +12,7 @@ from src.xgboost.model import QuantileForecaster, SalaryForecaster
 # Import conftest function directly (pytest will handle the path)
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from conftest import create_test_config
 
@@ -182,9 +183,7 @@ class TestConfigHyperparams(unittest.TestCase):
     @patch("src.xgboost.model.xgb.train")
     @patch("src.xgboost.model.xgb.cv")
     @patch("src.xgboost.model.xgb.DMatrix")
-    def test_custom_hyperparams_passed_to_xgb(
-        self, mock_dmatrix, mock_cv, mock_train
-    ):
+    def test_custom_hyperparams_passed_to_xgb(self, mock_dmatrix, mock_cv, mock_train):
         """Verify custom hyperparameters from config are passed to XGBoost."""
         mock_cv.return_value = pd.DataFrame({"test-quantile-mean": [0.5, 0.4, 0.3]})
 
@@ -204,9 +203,7 @@ class TestConfigHyperparams(unittest.TestCase):
     @patch("src.xgboost.model.xgb.train")
     @patch("src.xgboost.model.xgb.cv")
     @patch("src.xgboost.model.xgb.DMatrix")
-    def test_custom_cv_params_passed(
-        self, mock_dmatrix, mock_cv, mock_train
-    ):
+    def test_custom_cv_params_passed(self, mock_dmatrix, mock_cv, mock_train):
         """Verify custom cross-validation parameters from config are used."""
         mock_cv.return_value = pd.DataFrame({"test-quantile-mean": [0.5]})
 

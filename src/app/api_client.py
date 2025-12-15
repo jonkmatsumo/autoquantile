@@ -1,6 +1,5 @@
 """API client for Streamlit UI to interact with REST API."""
 
-import json
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -32,7 +31,12 @@ logger = get_logger(__name__)
 class APIError(Exception):
     """Base exception for API client errors."""
 
-    def __init__(self, message: str, status_code: Optional[int] = None, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        status_code: Optional[int] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
         """Initialize API error. Args: message (str): Error message. status_code (Optional[int]): HTTP status code. details (Optional[Dict[str, Any]]): Error details. Returns: None."""
         self.message = message
         self.status_code = status_code
@@ -45,7 +49,11 @@ class APIClient:
 
     def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None):
         """Initialize API client. Args: base_url (Optional[str]): API base URL. api_key (Optional[str]): API key. Returns: None."""
-        self.base_url = base_url or get_env_var("API_BASE_URL", "http://localhost:8000")
+        self.base_url: str = (
+            base_url
+            or get_env_var("API_BASE_URL", "http://localhost:8000")
+            or "http://localhost:8000"
+        )
         self.api_key = api_key or get_env_var("API_KEY")
         self.logger = get_logger(__name__)
 
@@ -62,16 +70,17 @@ class APIClient:
         if self.api_key:
             self.session.headers.update({"X-API-Key": self.api_key})
 
-    def _request(
-        self, method: str, endpoint: str, **kwargs
-    ) -> Dict[str, Any]:
+    def _request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """Make HTTP request. Args: method (str): HTTP method. endpoint (str): API endpoint. **kwargs: Request kwargs. Returns: Dict[str, Any]: Response JSON. Raises: APIError: If request fails."""
         url = f"{self.base_url.rstrip('/')}/{endpoint.lstrip('/')}"
-        
+
         try:
             response = self.session.request(method, url, **kwargs)
             response.raise_for_status()
-            return response.json()
+            json_response = response.json()
+            if not isinstance(json_response, dict):
+                raise APIError(f"Expected dict response, got {type(json_response)}")
+            return json_response
         except requests.exceptions.HTTPError as e:
             try:
                 error_data = e.response.json()
@@ -93,7 +102,7 @@ class APIClient:
         self, limit: int = 50, offset: int = 0, experiment_name: Optional[str] = None
     ) -> List[ModelMetadata]:
         """List available models. Args: limit (int): Maximum items. offset (int): Items to skip. experiment_name (Optional[str]): Filter by experiment. Returns: List[ModelMetadata]: List of models."""
-        params = {"limit": limit, "offset": offset}
+        params: Dict[str, Any] = {"limit": limit, "offset": offset}
         if experiment_name:
             params["experiment_name"] = experiment_name
 
@@ -140,9 +149,7 @@ class APIClient:
         if dataset_name:
             data["dataset_name"] = dataset_name
 
-        response = self._request(
-            "POST", "/api/v1/training/data/upload", files=files, data=data
-        )
+        response = self._request("POST", "/api/v1/training/data/upload", files=files, data=data)
         return DataUploadResponse.model_validate(response)
 
     def start_training(
@@ -169,9 +176,7 @@ class APIClient:
         if dataset_name:
             request_data["dataset_name"] = dataset_name
 
-        response = self._request(
-            "POST", "/api/v1/training/jobs", json=request_data
-        )
+        response = self._request("POST", "/api/v1/training/jobs", json=request_data)
         return TrainingJobResponse.model_validate(response)
 
     def get_training_job_status(self, job_id: str) -> TrainingJobStatusResponse:
@@ -183,7 +188,7 @@ class APIClient:
         self, limit: int = 50, offset: int = 0, status: Optional[str] = None
     ) -> List[TrainingJobSummary]:
         """List training jobs. Args: limit (int): Maximum items. offset (int): Items to skip. status (Optional[str]): Status filter. Returns: List[TrainingJobSummary]: List of jobs."""
-        params = {"limit": limit, "offset": offset}
+        params: Dict[str, Any] = {"limit": limit, "offset": offset}
         if status:
             params["status"] = status
 
@@ -200,7 +205,7 @@ class APIClient:
         """Start configuration workflow. Args: df (pd.DataFrame): Input data. provider (str): LLM provider. preset (Optional[str]): Preset prompt. Returns: WorkflowStartResponse: Workflow start response."""
         sample_df = df.head(50)
         df_json = sample_df.to_json(orient="records", date_format="iso")
-        
+
         request_data = {
             "data": df_json,
             "columns": df.columns.tolist(),
@@ -223,7 +228,10 @@ class APIClient:
         self, workflow_id: str, modifications: Dict[str, Any]
     ) -> WorkflowProgressResponse:
         """Confirm classification phase. Args: workflow_id (str): Workflow ID. modifications (Dict[str, Any]): Classification modifications. Returns: WorkflowProgressResponse: Progress response."""
-        from src.api.dto.workflow import ClassificationConfirmationRequest, ClassificationModifications
+        from src.api.dto.workflow import (
+            ClassificationConfirmationRequest,
+            ClassificationModifications,
+        )
 
         request_data = ClassificationConfirmationRequest(
             modifications=ClassificationModifications(
@@ -314,9 +322,7 @@ class APIClient:
     def get_data_summary(self, df: pd.DataFrame) -> DataSummaryResponse:
         """Get data summary. Args: df (pd.DataFrame): Input data. Returns: DataSummaryResponse: Data summary."""
         df_json = df.to_json(orient="records", date_format="iso")
-        response = self._request(
-            "POST", "/api/v1/analytics/data-summary", json={"data": df_json}
-        )
+        response = self._request("POST", "/api/v1/analytics/data-summary", json={"data": df_json})
         return DataSummaryResponse.model_validate(response)
 
     def get_feature_importance(
@@ -334,8 +340,8 @@ class APIClient:
 
 def get_api_client() -> Optional[APIClient]:
     """Get API client instance if API is enabled. Returns: Optional[APIClient]: API client or None if disabled."""
-    use_api = get_env_var("USE_API", "false").lower() in ("true", "1", "yes")
+    use_api_val = get_env_var("USE_API", "false") or "false"
+    use_api = use_api_val.lower() in ("true", "1", "yes")
     if not use_api:
         return None
     return APIClient()
-

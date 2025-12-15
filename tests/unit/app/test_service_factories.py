@@ -23,7 +23,7 @@ class TestServiceFactories(unittest.TestCase):
         """Verify get_training_service returns TrainingService instance."""
         service = get_training_service()
         self.assertIsInstance(service, TrainingService)
-        
+
         # Verify it's cached (same instance on second call)
         service2 = get_training_service()
         self.assertIs(service, service2)
@@ -33,7 +33,7 @@ class TestServiceFactories(unittest.TestCase):
         """Verify get_inference_service returns InferenceService instance."""
         service = get_inference_service()
         self.assertIsInstance(service, InferenceService)
-        
+
         # Verify it's cached (same instance on second call)
         service2 = get_inference_service()
         self.assertIs(service, service2)
@@ -43,7 +43,7 @@ class TestServiceFactories(unittest.TestCase):
         """Verify get_analytics_service returns AnalyticsService instance."""
         service = get_analytics_service()
         self.assertIsInstance(service, AnalyticsService)
-        
+
         # Verify it's cached (same instance on second call)
         service2 = get_analytics_service()
         self.assertIs(service, service2)
@@ -53,9 +53,9 @@ class TestServiceFactories(unittest.TestCase):
         with patch("src.app.service_factories.WorkflowService") as mock_workflow_class:
             mock_service = MagicMock()
             mock_workflow_class.return_value = mock_service
-            
+
             service = get_workflow_service()
-            
+
             mock_workflow_class.assert_called_once_with(provider="openai", model=None)
             self.assertEqual(service, mock_service)
 
@@ -64,9 +64,9 @@ class TestServiceFactories(unittest.TestCase):
         with patch("src.app.service_factories.WorkflowService") as mock_workflow_class:
             mock_service = MagicMock()
             mock_workflow_class.return_value = mock_service
-            
+
             service = get_workflow_service(provider="gemini", model="gemini-pro")
-            
+
             mock_workflow_class.assert_called_once_with(provider="gemini", model="gemini-pro")
             self.assertEqual(service, mock_service)
 
@@ -76,10 +76,10 @@ class TestServiceFactories(unittest.TestCase):
             mock_service1 = MagicMock()
             mock_service2 = MagicMock()
             mock_workflow_class.side_effect = [mock_service1, mock_service2]
-            
+
             service1 = get_workflow_service()
             service2 = get_workflow_service()
-            
+
             # Should create two different instances
             self.assertIsNot(service1, service2)
             self.assertEqual(mock_workflow_class.call_count, 2)
@@ -98,4 +98,3 @@ class TestServiceFactories(unittest.TestCase):
         analytics1 = get_analytics_service()
         analytics2 = get_analytics_service()
         self.assertIs(analytics1, analytics2)
-

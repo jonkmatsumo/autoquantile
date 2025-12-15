@@ -80,7 +80,10 @@ def parse_encoding_response(response_content: str) -> Dict[str, Any]:
         else:
             json_str = response_content.strip()
 
-        result = json.loads(json_str)
+        parsed = json.loads(json_str)
+        if not isinstance(parsed, dict):
+            raise ValueError(f"Expected dict, got {type(parsed)}")
+        result: Dict[str, Any] = parsed
 
         if "encodings" not in result:
             result = {"encodings": result, "summary": "Extracted from response"}
@@ -136,10 +139,18 @@ async def run_feature_encoder(
                 else:
                     logger.warning(f"Unknown tool requested: {tool_name}")
         else:
-            return parse_encoding_response(response.content)
+            response_content = str(response.content) if response.content else ""
+            return parse_encoding_response(response_content)
 
     logger.warning("Max iterations reached in feature encoder")
-    return parse_encoding_response(messages[-1].content if messages else "")
+    final_content_raw = messages[-1].content if messages else ""
+    if isinstance(final_content_raw, str):
+        final_content = final_content_raw
+    elif isinstance(final_content_raw, list):
+        final_content = str(final_content_raw[0]) if final_content_raw else ""
+    else:
+        final_content = str(final_content_raw) if final_content_raw else ""
+    return parse_encoding_response(final_content)
 
 
 def run_feature_encoder_sync(
@@ -192,17 +203,19 @@ def run_feature_encoder_sync(
                 else:
                     logger.warning(f"Unknown tool requested: {tool_name}")
         else:
-            result = parse_encoding_response(response.content)
+            response_content = str(response.content) if response.content else ""
+            result = parse_encoding_response(response_content)
             log_agent_interaction(
                 "feature_encoder",
                 system_prompt,
                 user_prompt,
-                response.content if response.content else "",
+                response_content,
             )
             return result
 
     logger.warning("Max iterations reached in feature encoder")
-    final_content = messages[-1].content if messages else ""
+    final_content_raw = messages[-1].content if messages else ""
+    final_content = str(final_content_raw) if isinstance(final_content_raw, str) else ""
     result = parse_encoding_response(final_content)
     log_agent_interaction("feature_encoder", system_prompt, user_prompt, final_content)
     return result

@@ -1,4 +1,5 @@
 """Pytest configuration and shared test fixtures."""
+
 from typing import Any, Dict
 
 import pytest
@@ -42,4 +43,3 @@ def test_config() -> Dict[str, Any]:
 def validated_test_config() -> Config:
     """Pytest fixture providing a validated Config object. Args: None. Returns: Config: Validated config."""
     return create_validated_test_config()
-

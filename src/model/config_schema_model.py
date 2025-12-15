@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Literal
 
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class Mappings(BaseModel):
@@ -20,9 +20,7 @@ class FeatureConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    targets: List[str] = Field(
-        description="List of target columns to predict", min_length=1
-    )
+    targets: List[str] = Field(description="List of target columns to predict", min_length=1)
     features: List[FeatureConfig] = Field(
         default_factory=list, description="List of feature configurations"
     )
@@ -33,7 +31,7 @@ class ModelConfig(BaseModel):
     hyperparameters: Dict[str, Any] = Field(
         default_factory=dict, description="Hyperparameters for training and CV"
     )
-    
+
     @model_validator(mode="after")
     def validate_quantiles_range(self) -> "ModelConfig":
         """Validate that quantiles are between 0 and 1. Returns: ModelConfig: Self for chaining."""

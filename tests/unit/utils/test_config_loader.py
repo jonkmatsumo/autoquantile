@@ -6,6 +6,7 @@ from src.model.config_schema_model import validate_config_dict
 # Import conftest function directly (pytest will handle the path)
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from conftest import create_test_config
 
@@ -59,7 +60,9 @@ def test_validate_config_dict_invalid_quantiles():
     with pytest.raises(ValidationError) as exc_info:
         validate_config_dict(config)
 
-    assert "quantile" in str(exc_info.value).lower() or "greater than 1" in str(exc_info.value).lower()
+    assert (
+        "quantile" in str(exc_info.value).lower() or "greater than 1" in str(exc_info.value).lower()
+    )
 
 
 def test_validate_config_dict_invalid_monotone_constraint():

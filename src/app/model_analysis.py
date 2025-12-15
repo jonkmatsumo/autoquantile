@@ -44,7 +44,7 @@ def render_model_analysis_ui() -> None:
         inference_service = get_inference_service()
         model = inference_service.load_model(selected_run_id)
         schema = inference_service.get_model_schema(model)
-        
+
         st.success(f"Loaded Run: {selected_run_id}")
 
         st.subheader("Feature Importance")
@@ -64,7 +64,7 @@ def render_model_analysis_ui() -> None:
             if not quantiles:
                 st.warning(f"No quantiles available for target {selected_target}.")
                 return
-                
+
             selected_q_val = st.selectbox(
                 "Select Quantile", quantiles, format_func=lambda x: f"P{int(x*100)}"
             )

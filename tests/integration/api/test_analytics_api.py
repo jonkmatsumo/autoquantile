@@ -60,4 +60,3 @@ def test_get_feature_importance_model_not_found(mock_service_class, client, api_
     data = response.json()
     assert data["status"] == "error"
     assert data["error"]["code"] == "MODEL_NOT_FOUND"
-

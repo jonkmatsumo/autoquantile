@@ -1,7 +1,7 @@
 """DTOs for model management endpoints."""
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -68,4 +68,3 @@ class ModelDetailsResponse(BaseModel):
     quantiles: List[float] = Field(
         ..., description="Prediction quantiles", min_length=1, max_length=20
     )
-

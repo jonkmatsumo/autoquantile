@@ -77,4 +77,3 @@ def test_get_model_schema_works_without_auth_when_key_not_set(client_no_auth):
     """Test that get model schema works without auth when API_KEY not set (development mode). Args: client_no_auth: Test client without auth."""
     response = client_no_auth.get("/api/v1/models/test123/schema")
     assert response.status_code in [200, 401, 404]
-

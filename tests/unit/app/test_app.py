@@ -130,6 +130,7 @@ class TestMain(unittest.TestCase):
         """Test that app preserves existing config from workflow wizard."""
         import sys
         from pathlib import Path
+
         sys.path.insert(0, str(Path(__file__).parent.parent.parent))
         from conftest import create_test_config
 

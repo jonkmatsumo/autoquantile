@@ -24,9 +24,7 @@ class WorkflowState(BaseModel):
     """Workflow state information."""
 
     phase: str = Field(..., description="Current workflow phase")
-    status: Literal["success", "error", "pending"] = Field(
-        ..., description="Workflow status"
-    )
+    status: Literal["success", "error", "pending"] = Field(..., description="Workflow status")
     current_result: Optional[Dict[str, Any]] = Field(
         default=None, description="Current phase result data"
     )
@@ -62,9 +60,7 @@ class ClassificationModifications(BaseModel):
 class ClassificationConfirmationRequest(BaseModel):
     """Request to confirm classification phase."""
 
-    modifications: ClassificationModifications = Field(
-        ..., description="Modified classification"
-    )
+    modifications: ClassificationModifications = Field(..., description="Modified classification")
 
 
 class EncodingConfig(BaseModel):
@@ -129,9 +125,7 @@ class Hyperparameters(BaseModel):
 class ConfigurationFinalizationRequest(BaseModel):
     """Request to finalize configuration."""
 
-    features: List[FeatureConfig] = Field(
-        ..., description="Feature configurations", min_length=1
-    )
+    features: List[FeatureConfig] = Field(..., description="Feature configurations", min_length=1)
     quantiles: List[float] = Field(
         ...,
         description="Prediction quantiles",
@@ -167,4 +161,3 @@ class WorkflowCompleteResponse(BaseModel):
     workflow_id: str = Field(..., description="Unique workflow identifier")
     phase: Literal["complete"] = Field(default="complete", description="Workflow phase")
     final_config: Dict[str, Any] = Field(..., description="Final configuration dictionary")
-

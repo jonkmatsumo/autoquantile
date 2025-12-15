@@ -37,4 +37,3 @@ def client_no_auth() -> Generator[TestClient, None, None]:
         yield test_client
     if old_key:
         os.environ["API_KEY"] = old_key
-

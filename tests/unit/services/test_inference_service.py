@@ -81,9 +81,7 @@ class TestInferenceService(unittest.TestCase):
     def test_validate_input_features_valid(self):
         """Test validation with valid input features."""
         mock_model = MagicMock()
-        mock_model.ranked_encoders = {
-            "Level": MagicMock(mapping={"L3": 0, "L4": 1, "L5": 2})
-        }
+        mock_model.ranked_encoders = {"Level": MagicMock(mapping={"L3": 0, "L4": 1, "L5": 2})}
         mock_model.proximity_encoders = {}
         mock_model.feature_names = ["Level_Enc", "YearsOfExperience"]
         mock_model.targets = ["BaseSalary"]
@@ -147,9 +145,7 @@ class TestInferenceService(unittest.TestCase):
     def test_validate_input_features_invalid_ranked_value(self):
         """Test validation fails when ranked feature value is invalid."""
         mock_model = MagicMock()
-        mock_model.ranked_encoders = {
-            "Level": MagicMock(mapping={"L3": 0, "L4": 1, "L5": 2})
-        }
+        mock_model.ranked_encoders = {"Level": MagicMock(mapping={"L3": 0, "L4": 1, "L5": 2})}
         mock_model.proximity_encoders = {}
         mock_model.feature_names = ["Level_Enc"]
         mock_model.targets = ["BaseSalary"]
@@ -181,16 +177,12 @@ class TestInferenceService(unittest.TestCase):
     def test_predict_success(self):
         """Test successful prediction."""
         mock_model = MagicMock()
-        mock_model.ranked_encoders = {
-            "Level": MagicMock(mapping={"L4": 1})
-        }
+        mock_model.ranked_encoders = {"Level": MagicMock(mapping={"L4": 1})}
         mock_model.proximity_encoders = {}
         mock_model.feature_names = ["Level_Enc", "YearsOfExperience"]
         mock_model.targets = ["BaseSalary"]
         mock_model.quantiles = [0.5]
-        mock_model.predict.return_value = {
-            "BaseSalary": {"p50": pd.Series([150000.0])}
-        }
+        mock_model.predict.return_value = {"BaseSalary": {"p50": pd.Series([150000.0])}}
 
         features = {"Level": "L4", "YearsOfExperience": 5}
 
@@ -226,9 +218,7 @@ class TestInferenceService(unittest.TestCase):
         mock_model.feature_names = ["Location_Enc"]
         mock_model.targets = ["BaseSalary"]
         mock_model.quantiles = [0.5]
-        mock_model.predict.return_value = {
-            "BaseSalary": {"p50": pd.Series([150000.0])}
-        }
+        mock_model.predict.return_value = {"BaseSalary": {"p50": pd.Series([150000.0])}}
 
         features = {"Location": "San Francisco, CA"}
 
@@ -251,4 +241,3 @@ class TestInferenceService(unittest.TestCase):
         self.assertEqual(formatted[0]["p10"], 120000.0)
         self.assertEqual(formatted[0]["p50"], 150000.0)
         self.assertEqual(formatted[0]["p90"], 180000.0)
-

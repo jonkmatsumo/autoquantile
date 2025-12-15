@@ -132,7 +132,7 @@ def test_model_analysis_section(
     mock_streamlit.session_state = {
         "forecaster": mock_forecaster,
         "forecaster_schema": mock_schema,
-        "current_run_id": "test_run_123"
+        "current_run_id": "test_run_123",
     }
 
     # Mock registry
@@ -212,7 +212,7 @@ def test_model_analysis_feature_importance(
     mock_streamlit.session_state = {
         "forecaster": mock_forecaster,
         "forecaster_schema": mock_schema,
-        "current_run_id": "test_run_123"
+        "current_run_id": "test_run_123",
     }
 
     runs = [

@@ -11,6 +11,7 @@ from src.services.workflow_service import WorkflowService
 # Import conftest function directly (pytest will handle the path)
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from conftest import create_test_config
 
@@ -119,4 +120,3 @@ class TestLLMOnlyConfigIntegration(unittest.TestCase):
 
         # Inference should work with embedded config
         # (Actual inference testing would require model loading, which is tested elsewhere)
-

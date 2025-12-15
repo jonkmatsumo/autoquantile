@@ -657,9 +657,7 @@ class TestTrainingWithOptionalEncodings(unittest.TestCase):
     @patch("src.xgboost.model.xgb.train")
     @patch("src.xgboost.model.xgb.cv")
     @patch("src.xgboost.model.xgb.DMatrix")
-    def test_training_with_date_normalize_recent(
-        self, mock_dmatrix, mock_cv, mock_train
-    ):
+    def test_training_with_date_normalize_recent(self, mock_dmatrix, mock_cv, mock_train):
         """Test training with normalize_recent date encoding."""
         config = {
             "mappings": {"levels": {}, "location_targets": {}},

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -11,7 +11,9 @@ from src.services.inference_service import InvalidInputError, ModelNotFoundError
 from src.services.model_registry import ModelRegistry
 
 
-def render_model_information_api(model_details: Any, run_id: str, runs: List[Dict[str, Any]]) -> None:
+def render_model_information_api(
+    model_details: Any, run_id: str, runs: List[Dict[str, Any]]
+) -> None:
     """Display model metadata and feature information from API. Args: model_details (Any): Model details response. run_id (str): MLflow run ID. runs (List[Dict[str, Any]]): List of all runs. Returns: None."""
     st.markdown("---")
     st.subheader("Model Information")
@@ -23,7 +25,9 @@ def render_model_information_api(model_details: Any, run_id: str, runs: List[Dic
             st.markdown(f"**Run ID:** `{run_id[:8]}`")
             if metadata.start_time:
                 if hasattr(metadata.start_time, "strftime"):
-                    st.markdown(f"**Training Date:** {metadata.start_time.strftime('%Y-%m-%d %H:%M')}")
+                    st.markdown(
+                        f"**Training Date:** {metadata.start_time.strftime('%Y-%m-%d %H:%M')}"
+                    )
                 else:
                     st.markdown(f"**Training Date:** {metadata.start_time}")
             st.markdown(f"**Model Type:** {metadata.model_type}")
@@ -57,7 +61,9 @@ def render_model_information_api(model_details: Any, run_id: str, runs: List[Dic
 
             if schema.numerical_features:
                 st.markdown("**Numerical Features:**")
-                st.markdown(f"- {', '.join(schema.numerical_features[:10])}{'...' if len(schema.numerical_features) > 10 else ''}")
+                st.markdown(
+                    f"- {', '.join(schema.numerical_features[:10])}{'...' if len(schema.numerical_features) > 10 else ''}"
+                )
 
             total_features = (
                 len(schema.ranked_features or [])
@@ -124,7 +130,9 @@ def render_model_information(
 
         if schema.numerical_features:
             st.markdown("**Numerical Features:**")
-            st.markdown(f"- {', '.join(schema.numerical_features[:10])}{'...' if len(schema.numerical_features) > 10 else ''}")
+            st.markdown(
+                f"- {', '.join(schema.numerical_features[:10])}{'...' if len(schema.numerical_features) > 10 else ''}"
+            )
 
         st.markdown(f"**Total Features:** {len(schema.all_feature_names)}")
 
@@ -196,7 +204,10 @@ def render_inference_ui() -> None:
     run_id = run_options[selected_label]
 
     if use_api:
-        if "model_details" not in st.session_state or st.session_state.get("current_run_id") != run_id:
+        if (
+            "model_details" not in st.session_state
+            or st.session_state.get("current_run_id") != run_id
+        ):
             with st.spinner(f"Loading model details from API for run {run_id}..."):
                 try:
                     model_details = api_client.get_model_details(run_id)
@@ -231,7 +242,7 @@ def render_inference_ui() -> None:
         if use_api:
             model_details = st.session_state["model_details"]
             targets = model_details.targets
-            
+
             if not targets:
                 st.warning("No targets available in this model.")
             else:
@@ -264,7 +275,10 @@ def render_inference_ui() -> None:
                                     )
                                     if importance_response.features:
                                         df_imp = pd.DataFrame(
-                                            [{"Feature": f.name, "Gain": f.gain} for f in importance_response.features]
+                                            [
+                                                {"Feature": f.name, "Gain": f.gain}
+                                                for f in importance_response.features
+                                            ]
                                         )
                                         if not df_imp.empty:
                                             st.dataframe(df_imp, width="stretch")
@@ -382,9 +396,7 @@ def render_inference_ui() -> None:
                 handled = [f.name for f in (schema.ranked_features or [])] + [
                     f.name for f in (schema.proximity_features or [])
                 ]
-                remaining = [
-                    f for f in (schema.numerical_features or []) if f not in handled
-                ]
+                remaining = [f for f in (schema.numerical_features or []) if f not in handled]
 
                 for feat in remaining:
                     val = st.number_input(feat, 0, 100, 5, key=f"input_{feat}")

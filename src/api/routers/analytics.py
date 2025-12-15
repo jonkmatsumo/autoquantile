@@ -80,11 +80,9 @@ async def get_feature_importance(
             )
 
         features = [
-            FeatureImportance(name=row["Feature"], gain=row["Gain"])
-            for _, row in df_imp.iterrows()
+            FeatureImportance(name=row["Feature"], gain=row["Gain"]) for _, row in df_imp.iterrows()
         ]
 
         return FeatureImportanceResponse(features=features)
     except ModelNotFoundError as e:
         raise APIModelNotFoundError(run_id) from e
-

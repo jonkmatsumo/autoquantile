@@ -56,7 +56,9 @@ class QuantileForecaster:
                 fe_config = {"ranked_cols": {"Level": "levels"}, "proximity_cols": ["Location"]}
 
         for col, map_key in fe_config.get("ranked_cols", {}).items():
-            self.ranked_encoders[col] = RankedCategoryEncoder(config=self.config, config_key=map_key)
+            self.ranked_encoders[col] = RankedCategoryEncoder(
+                config=self.config, config_key=map_key
+            )
 
         for col in fe_config.get("proximity_cols", []):
             self.proximity_encoders[col] = ProximityEncoder(config=self.config)

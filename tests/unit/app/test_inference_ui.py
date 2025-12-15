@@ -19,7 +19,7 @@ class TestRenderModelInformation(unittest.TestCase):
         mock_forecaster.ranked_encoders = {"Level": MagicMock(mapping={"E3": 0, "E4": 1, "E5": 2})}
         mock_forecaster.proximity_encoders = {"Location": MagicMock()}
         mock_forecaster.feature_names = ["Level_Enc", "Location_Enc", "YearsOfExperience"]
-        
+
         mock_schema = MagicMock(spec=ModelSchema)
         mock_schema.ranked_features = ["Level"]
         mock_schema.proximity_features = ["Location"]
@@ -59,7 +59,7 @@ class TestRenderModelInformation(unittest.TestCase):
         mock_forecaster.ranked_encoders = {}
         mock_forecaster.proximity_encoders = {}
         mock_forecaster.feature_names = []
-        
+
         mock_schema = MagicMock(spec=ModelSchema)
         mock_schema.ranked_features = []
         mock_schema.proximity_features = []
@@ -86,7 +86,7 @@ class TestRenderModelInformation(unittest.TestCase):
         }
         mock_forecaster.proximity_encoders = {"Location": MagicMock()}
         mock_forecaster.feature_names = ["Level_Enc", "Location_Enc", "YearsOfExperience"]
-        
+
         mock_schema = MagicMock(spec=ModelSchema)
         mock_schema.ranked_features = ["Level"]
         mock_schema.proximity_features = ["Location"]
@@ -136,7 +136,12 @@ class TestRenderInferenceUI(unittest.TestCase):
     @patch("src.app.inference_ui.ModelRegistry")
     @patch("src.app.inference_ui.render_model_information")
     def test_render_inference_ui_model_loading_error(
-        self, mock_render_info, mock_registry_class, mock_get_inference_service, mock_get_api_client, mock_st
+        self,
+        mock_render_info,
+        mock_registry_class,
+        mock_get_inference_service,
+        mock_get_api_client,
+        mock_st,
     ):
         """Verify graceful error handling when model loading fails."""
         mock_get_api_client.return_value = None  # API disabled
@@ -159,6 +164,7 @@ class TestRenderInferenceUI(unittest.TestCase):
 
         mock_inference_service = mock_get_inference_service.return_value
         from src.services.inference_service import ModelNotFoundError
+
         mock_inference_service.load_model.side_effect = ModelNotFoundError("Model not found")
 
         render_inference_ui()
@@ -175,7 +181,13 @@ class TestRenderInferenceUI(unittest.TestCase):
     @patch("src.app.inference_ui.ModelRegistry")
     @patch("src.app.inference_ui.render_model_information")
     def test_render_inference_ui_success(
-        self, mock_render_info, mock_registry_class, mock_get_analytics_service, mock_get_inference_service, mock_get_api_client, mock_st
+        self,
+        mock_render_info,
+        mock_registry_class,
+        mock_get_analytics_service,
+        mock_get_inference_service,
+        mock_get_api_client,
+        mock_st,
     ):
         """Test render_inference_ui with successful model loading."""
         mock_get_api_client.return_value = None  # API disabled
@@ -256,7 +268,13 @@ class TestRenderInferenceUI(unittest.TestCase):
     @patch("src.app.inference_ui.ModelRegistry")
     @patch("src.app.inference_ui.render_model_information")
     def test_render_inference_ui_uses_inference_service(
-        self, mock_render_info, mock_registry_class, mock_get_analytics_service, mock_get_inference_service, mock_get_api_client, mock_st
+        self,
+        mock_render_info,
+        mock_registry_class,
+        mock_get_analytics_service,
+        mock_get_inference_service,
+        mock_get_api_client,
+        mock_st,
     ):
         """Verify that InferenceService is used for model loading and schema retrieval."""
         mock_get_api_client.return_value = None  # API disabled
@@ -313,7 +331,12 @@ class TestRenderInferenceUI(unittest.TestCase):
     @patch("src.app.inference_ui.get_analytics_service")
     @patch("src.app.inference_ui.ModelRegistry")
     def test_render_inference_ui_prediction_success(
-        self, mock_registry_class, mock_get_analytics_service, mock_get_inference_service, mock_get_api_client, mock_st
+        self,
+        mock_registry_class,
+        mock_get_analytics_service,
+        mock_get_inference_service,
+        mock_get_api_client,
+        mock_st,
     ):
         """Verify successful prediction flow using InferenceService."""
         from src.services.inference_service import PredictionResult
@@ -345,8 +368,7 @@ class TestRenderInferenceUI(unittest.TestCase):
 
         # Mock prediction result
         prediction_result = PredictionResult(
-            predictions={"BaseSalary": {"p50": 150000.0}},
-            metadata={"location_zone": None}
+            predictions={"BaseSalary": {"p50": 150000.0}}, metadata={"location_zone": None}
         )
         mock_inference_service.predict.return_value = prediction_result
 
@@ -361,7 +383,7 @@ class TestRenderInferenceUI(unittest.TestCase):
         mock_st.form.return_value.__exit__ = MagicMock(return_value=None)
         mock_st.form_submit_button.return_value = True  # Form submitted
         mock_st.columns.return_value = [MagicMock(), MagicMock()]
-        
+
         # selectbox is called multiple times - need to handle all calls
         selectbox_calls = [
             "2023-01-01 12:00 | XGBoost | Test Dataset | CV:0.9500 | ID:test_run",  # Model selection
@@ -370,12 +392,14 @@ class TestRenderInferenceUI(unittest.TestCase):
             "P50",  # Quantile selection (in model analysis)
         ]
         call_count = [0]
+
         def selectbox_side_effect(*args, **kwargs):
             result = selectbox_calls[call_count[0] % len(selectbox_calls)]
             call_count[0] += 1
             return result
+
         mock_st.selectbox.side_effect = selectbox_side_effect
-        
+
         mock_st.number_input.return_value = 5  # YearsOfExperience
         mock_st.text_input.return_value = "New York"  # Location (if needed)
         mock_expander = MagicMock()
@@ -427,7 +451,9 @@ class TestRenderInferenceUI(unittest.TestCase):
         mock_inference_service = mock_get_inference_service.return_value
         mock_inference_service.load_model.return_value = mock_forecaster
         mock_inference_service.get_model_schema.return_value = mock_schema
-        mock_inference_service.predict.side_effect = InvalidInputError("Invalid input features: Missing ranked features: Level")
+        mock_inference_service.predict.side_effect = InvalidInputError(
+            "Invalid input features: Missing ranked features: Level"
+        )
 
         mock_st.selectbox.return_value = (
             "2023-01-01 12:00 | XGBoost | Test Dataset | CV:0.9500 | ID:test_run"
@@ -454,7 +480,12 @@ class TestRenderInferenceUI(unittest.TestCase):
     @patch("src.app.inference_ui.get_analytics_service")
     @patch("src.app.inference_ui.ModelRegistry")
     def test_render_inference_ui_uses_schema_for_features(
-        self, mock_registry_class, mock_get_analytics_service, mock_get_inference_service, mock_get_api_client, mock_st
+        self,
+        mock_registry_class,
+        mock_get_analytics_service,
+        mock_get_inference_service,
+        mock_get_api_client,
+        mock_st,
     ):
         """Verify that schema is used for building feature input forms."""
         mock_get_api_client.return_value = None
@@ -507,11 +538,13 @@ class TestRenderInferenceUI(unittest.TestCase):
         selectbox_calls = [call[0][0] for call in mock_st.selectbox.call_args_list]
         # Should have at least one call for Level (ranked feature)
         self.assertTrue(any("Level" in str(call) for call in selectbox_calls if call))
-        
+
         # Verify text_input was called for proximity features
         text_input_calls = [call[0][0] for call in mock_st.text_input.call_args_list]
         self.assertTrue(any("Location" in str(call) for call in text_input_calls if call))
-        
+
         # Verify number_input was called for numerical features
         number_input_calls = [call[0][0] for call in mock_st.number_input.call_args_list]
-        self.assertTrue(any("YearsOfExperience" in str(call) for call in number_input_calls if call))
+        self.assertTrue(
+            any("YearsOfExperience" in str(call) for call in number_input_calls if call)
+        )

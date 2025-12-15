@@ -4,7 +4,6 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends
 
-from src.api.dto.common import BaseResponse
 from src.api.dto.inference import (
     BatchPredictionRequest,
     BatchPredictionResponse,
@@ -90,4 +89,3 @@ async def predict_batch(
         raise APIModelNotFoundError(run_id) from e
     except ServiceInvalidInputError as e:
         raise InvalidInputError(str(e)) from e
-

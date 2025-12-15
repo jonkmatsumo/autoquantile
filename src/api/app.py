@@ -77,4 +77,3 @@ def create_app() -> FastAPI:
     register_mcp_tools(app)
 
     return app
-

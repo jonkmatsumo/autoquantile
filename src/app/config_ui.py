@@ -186,9 +186,14 @@ def _render_classification_phase(
     st.subheader("Step 1: Column Classification")
 
     data = result.get("data", {})
-    
+
     # Fallback: if data is empty, try to get classification directly from workflow state
-    if not use_api and not data.get("targets") and not data.get("features") and not data.get("ignore"):
+    if (
+        not use_api
+        and not data.get("targets")
+        and not data.get("features")
+        and not data.get("ignore")
+    ):
         service: WorkflowService = st.session_state.get("workflow_service")
         if service and service.workflow and service.workflow.current_state:
             classification = service.workflow.current_state.get("column_classification", {})
@@ -205,7 +210,7 @@ def _render_classification_phase(
                         "⚠️ **Classification Issue**: The LLM provided reasoning but no column classifications. "
                         "This may indicate a parsing error. Please check the logs for details."
                     )
-    
+
     reasoning = data.get("reasoning", "")
     if reasoning:
         with st.expander("Agent Reasoning", expanded=True):
@@ -221,7 +226,7 @@ def _render_classification_phase(
 
     # Create a mapping from normalized (lowercase, stripped) column names to actual column names
     column_name_map = {col.lower().strip(): col for col in all_columns}
-    
+
     # Normalize classified column names to match actual DataFrame column names
     def normalize_column_name(class_col: str) -> str:
         """Match a classified column name to an actual DataFrame column name."""
@@ -235,19 +240,23 @@ def _render_classification_phase(
             return column_name_map[normalized_lower]
         # Return original if no match (will show as unmatched)
         return normalized
-    
+
     targets = [normalize_column_name(col) for col in targets]
     features = [normalize_column_name(col) for col in features]
     ignore = [normalize_column_name(col) for col in ignore]
-    
+
     # Check for mismatches after normalization
     all_classified = set(targets + features + ignore)
     all_classified_normalized = {c.lower().strip() for c in all_classified}
     all_columns_normalized = {c.lower().strip() for c in all_columns}
-    
-    unclassified_columns = [col for col in all_columns if col.lower().strip() not in all_classified_normalized]
-    unmatched_classifications = [c for c in all_classified if c.lower().strip() not in all_columns_normalized]
-    
+
+    unclassified_columns = [
+        col for col in all_columns if col.lower().strip() not in all_classified_normalized
+    ]
+    unmatched_classifications = [
+        c for c in all_classified if c.lower().strip() not in all_columns_normalized
+    ]
+
     if unclassified_columns and (targets or features or ignore):
         st.warning(
             f"⚠️ **Column Name Mismatch**: The following columns are not classified: {', '.join(unclassified_columns)}. "
@@ -265,7 +274,9 @@ def _render_classification_phase(
     else:
         service: WorkflowService = st.session_state.get("workflow_service")
         column_types = (
-            service.workflow.current_state.get("column_types", {}) if service and service.workflow else {}
+            service.workflow.current_state.get("column_types", {})
+            if service and service.workflow
+            else {}
         )
 
     # Build unified editor
@@ -339,7 +350,9 @@ def _render_classification_phase(
                         return None
                     with st.status("Evaluating features...", expanded=False) as status:
                         status.update(label="Evaluating features...", state="running")
-                        progress_response = api_client.confirm_classification(workflow_id, modifications)
+                        progress_response = api_client.confirm_classification(
+                            workflow_id, modifications
+                        )
                         status.update(label="Feature encoding complete", state="complete")
                     result = {
                         "status": "success",
@@ -354,20 +367,23 @@ def _render_classification_phase(
                         result = service.confirm_classification(modifications)
                         status.update(label="Feature encoding complete", state="complete")
                     st.session_state["workflow_phase"] = "encoding"
-                    
+
                     if result.get("status") == "error":
                         error_msg = result.get("error", "Classification confirmation failed")
                         st.error(f"**Classification Error**")
                         st.error(f"Classification confirmation failed: {error_msg}")
                         return None
-                    
+
                 st.session_state["workflow_result"] = result
                 st.rerun()
             except APIError as e:
                 st.error(f"Failed to confirm classification: {e.message}")
             except RuntimeError as e:
                 error_msg = str(e)
-                if "not started" in error_msg.lower() or "workflow not started" in error_msg.lower():
+                if (
+                    "not started" in error_msg.lower()
+                    or "workflow not started" in error_msg.lower()
+                ):
                     st.error("Workflow not started. Please restart the configuration wizard.")
                 else:
                     st.error(f"Failed to confirm classification: {error_msg}")
@@ -405,10 +421,14 @@ def _render_encoding_phase(
     else:
         service: WorkflowService = st.session_state.get("workflow_service")
         current_optional_encodings = (
-            service.workflow.current_state.get("optional_encodings", {}) if service and service.workflow else {}
+            service.workflow.current_state.get("optional_encodings", {})
+            if service and service.workflow
+            else {}
         )
         column_types = (
-            service.workflow.current_state.get("column_types", {}) if service and service.workflow else {}
+            service.workflow.current_state.get("column_types", {})
+            if service and service.workflow
+            else {}
         )
 
     # Get date columns - check if we have access to original dataframe
@@ -662,20 +682,23 @@ def _render_encoding_phase(
                         result = service.confirm_encoding(modifications)
                         status.update(label="Model configuration complete", state="complete")
                     st.session_state["workflow_phase"] = "configuration"
-                    
+
                     if result.get("status") == "error":
                         error_msg = result.get("error", "Encoding confirmation failed")
                         st.error(f"**Encoding Error**")
                         st.error(f"Encoding confirmation failed: {error_msg}")
                         return None
-                    
+
                 st.session_state["workflow_result"] = result
                 st.rerun()
             except APIError as e:
                 st.error(f"Failed to confirm encoding: {e.message}")
             except RuntimeError as e:
                 error_msg = str(e)
-                if "not started" in error_msg.lower() or "workflow not started" in error_msg.lower():
+                if (
+                    "not started" in error_msg.lower()
+                    or "workflow not started" in error_msg.lower()
+                ):
                     st.error("Workflow not started. Please restart the configuration wizard.")
                 else:
                     st.error(f"Failed to confirm encoding: {error_msg}")
@@ -767,7 +790,9 @@ def _render_configuration_phase(
     else:
         service: WorkflowService = st.session_state.get("workflow_service")
         location_columns = (
-            service.workflow.current_state.get("location_columns", []) if service and service.workflow else []
+            service.workflow.current_state.get("location_columns", [])
+            if service and service.workflow
+            else []
         )
     if location_columns:
         st.markdown("**Location Proximity Settings:**")
@@ -779,7 +804,9 @@ def _render_configuration_phase(
         else:
             service: WorkflowService = st.session_state.get("workflow_service")
             current_location_settings = (
-                service.workflow.current_state.get("location_settings", {}) if service and service.workflow else {}
+                service.workflow.current_state.get("location_settings", {})
+                if service and service.workflow
+                else {}
             )
         current_max_dist = current_location_settings.get("max_distance_km", 50)
         current_max_dist = int(current_max_dist) if current_max_dist else 50
@@ -894,7 +921,9 @@ def _render_configuration_phase(
                             "workflow_location_settings"
                         ]
 
-                    complete_response = api_client.finalize_configuration(workflow_id, config_updates)
+                    complete_response = api_client.finalize_configuration(
+                        workflow_id, config_updates
+                    )
                     final_config = complete_response.config
                     st.session_state["workflow_result"] = {
                         "status": "success",
@@ -908,7 +937,9 @@ def _render_configuration_phase(
 
                     if not final_config:
                         st.error("**Configuration Error**")
-                        st.error("No final configuration available. Ensure workflow is in configuration phase.")
+                        st.error(
+                            "No final configuration available. Ensure workflow is in configuration phase."
+                        )
                         return None
 
                     final_config["model"]["features"] = final_features
@@ -947,7 +978,10 @@ def _render_configuration_phase(
                 st.error(f"Failed to finalize configuration: {e.message}")
             except RuntimeError as e:
                 error_msg = str(e)
-                if "not started" in error_msg.lower() or "workflow not started" in error_msg.lower():
+                if (
+                    "not started" in error_msg.lower()
+                    or "workflow not started" in error_msg.lower()
+                ):
                     st.error("Workflow not started. Please restart the configuration wizard.")
                 else:
                     st.error(f"Failed to finalize configuration: {error_msg}")

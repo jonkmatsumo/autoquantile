@@ -48,9 +48,9 @@ class TestAPIClientInit:
     def test_init_with_provided_params(self, mock_get_logger, mock_get_env_var):
         """Test initialization with provided base_url and api_key."""
         mock_get_logger.return_value = MagicMock()
-        
+
         client = APIClient(base_url="https://api.example.com", api_key="test_key")
-        
+
         assert client.base_url == "https://api.example.com"
         assert client.api_key == "test_key"
         assert client.session.headers.get("X-API-Key") == "test_key"
@@ -63,11 +63,11 @@ class TestAPIClientInit:
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: {
             "API_BASE_URL": "https://default.com",
-            "API_KEY": "env_key"
+            "API_KEY": "env_key",
         }.get(key, default)
-        
+
         client = APIClient()
-        
+
         assert client.base_url == "https://default.com"
         assert client.api_key == "env_key"
         assert client.session.headers.get("X-API-Key") == "env_key"
@@ -80,9 +80,9 @@ class TestAPIClientInit:
         mock_get_env_var.side_effect = lambda key, default=None: {
             "API_BASE_URL": "https://default.com"
         }.get(key, default)
-        
+
         client = APIClient()
-        
+
         assert client.base_url == "https://default.com"
         assert client.api_key is None
         assert "X-API-Key" not in client.session.headers
@@ -93,9 +93,9 @@ class TestAPIClientInit:
         """Test retry strategy is configured correctly."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
-        
+
         assert "http://" in client.session.adapters
         assert "https://" in client.session.adapters
         http_adapter = client.session.adapters["http://"]
@@ -112,16 +112,16 @@ class TestAPIClientRequest:
         """Test successful GET request."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient(base_url="https://api.test.com")
         mock_response = MagicMock()
         mock_response.json.return_value = {"status": "success", "data": {"key": "value"}}
         mock_response.raise_for_status.return_value = None
-        
+
         client.session.request = MagicMock(return_value=mock_response)
-        
+
         result = client._request("GET", "/api/test")
-        
+
         assert result == {"status": "success", "data": {"key": "value"}}
         client.session.request.assert_called_once()
         call_args = client.session.request.call_args
@@ -133,24 +133,21 @@ class TestAPIClientRequest:
         """Test HTTPError with JSON error response."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         mock_response = MagicMock()
         mock_response.status_code = 404
         mock_response.json.return_value = {
-            "error": {
-                "message": "Model not found",
-                "details": {"run_id": "test123"}
-            }
+            "error": {"message": "Model not found", "details": {"run_id": "test123"}}
         }
-        
+
         http_error = HTTPError(response=mock_response)
         mock_response.raise_for_status.side_effect = http_error
         client.session.request = MagicMock(return_value=mock_response)
-        
+
         with pytest.raises(APIError) as exc_info:
             client._request("GET", "/api/test")
-        
+
         assert exc_info.value.message == "Model not found"
         assert exc_info.value.status_code == 404
         assert exc_info.value.details == {"run_id": "test123"}
@@ -162,20 +159,20 @@ class TestAPIClientRequest:
         """Test HTTPError with non-JSON error response."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.json.side_effect = ValueError("Not JSON")
-        
+
         http_error = HTTPError("Server error")
         http_error.response = mock_response
         mock_response.raise_for_status.side_effect = http_error
         client.session.request = MagicMock(return_value=mock_response)
-        
+
         with pytest.raises(APIError) as exc_info:
             client._request("GET", "/api/test")
-        
+
         assert "Server error" in exc_info.value.message or str(http_error) in exc_info.value.message
         assert exc_info.value.status_code == 500
 
@@ -185,14 +182,14 @@ class TestAPIClientRequest:
         """Test RequestException handling."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         request_exception = RequestException("Connection failed")
         client.session.request = MagicMock(side_effect=request_exception)
-        
+
         with pytest.raises(APIError) as exc_info:
             client._request("GET", "/api/test")
-        
+
         assert "Request failed" in exc_info.value.message
         assert "Connection failed" in exc_info.value.message
         assert exc_info.value.__cause__ == request_exception
@@ -203,16 +200,16 @@ class TestAPIClientRequest:
         """Test URL normalization in _request."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient(base_url="https://api.test.com/")
         mock_response = MagicMock()
         mock_response.json.return_value = {}
         mock_response.raise_for_status.return_value = None
-        
+
         client.session.request = MagicMock(return_value=mock_response)
-        
+
         client._request("GET", "/api/test")
-        
+
         call_args = client.session.request.call_args
         assert call_args[0][1] == "https://api.test.com/api/test"
 
@@ -226,7 +223,7 @@ class TestAPIClientListModels:
         """Test successful list_models call."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         mock_response_data = {
             "data": {
@@ -242,12 +239,14 @@ class TestAPIClientListModels:
             }
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         models = client.list_models()
-        
+
         assert len(models) == 1
         assert models[0].run_id == "run1"
-        client._request.assert_called_once_with("GET", "/api/v1/models", params={"limit": 50, "offset": 0})
+        client._request.assert_called_once_with(
+            "GET", "/api/v1/models", params={"limit": 50, "offset": 0}
+        )
 
     @patch("src.app.api_client.get_env_var")
     @patch("src.app.api_client.get_logger")
@@ -255,17 +254,15 @@ class TestAPIClientListModels:
         """Test list_models with experiment_name filter."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         mock_response_data = {"data": {"models": []}}
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         client.list_models(limit=10, offset=5, experiment_name="exp1")
-        
+
         client._request.assert_called_once_with(
-            "GET",
-            "/api/v1/models",
-            params={"limit": 10, "offset": 5, "experiment_name": "exp1"}
+            "GET", "/api/v1/models", params={"limit": 10, "offset": 5, "experiment_name": "exp1"}
         )
 
 
@@ -278,7 +275,7 @@ class TestAPIClientGetModelDetails:
         """Test successful get_model_details call."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         mock_response_data = {
             "run_id": "run1",
@@ -298,9 +295,9 @@ class TestAPIClientGetModelDetails:
             "quantiles": [0.5],
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.get_model_details("run1")
-        
+
         assert result.run_id == "run1"
         client._request.assert_called_once_with("GET", "/api/v1/models/run1")
 
@@ -314,7 +311,7 @@ class TestAPIClientGetModelSchema:
         """Test successful get_model_schema call."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         mock_response_data = {
             "run_id": "run1",
@@ -325,9 +322,9 @@ class TestAPIClientGetModelSchema:
             },
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.get_model_schema("run1")
-        
+
         assert result.run_id == "run1"
         client._request.assert_called_once_with("GET", "/api/v1/models/run1/schema")
 
@@ -341,7 +338,7 @@ class TestAPIClientPredict:
         """Test successful predict call."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         features = {"feature1": "value1", "feature2": 123}
         mock_response_data = {
@@ -352,14 +349,12 @@ class TestAPIClientPredict:
             },
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.predict("run1", features)
-        
+
         assert result.predictions == {"target1": {"p50": 100000.0}}
         client._request.assert_called_once_with(
-            "POST",
-            "/api/v1/models/run1/predict",
-            json={"features": features}
+            "POST", "/api/v1/models/run1/predict", json={"features": features}
         )
 
 
@@ -372,7 +367,7 @@ class TestAPIClientPredictBatch:
         """Test successful predict_batch call."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         features_list = [
             {"feature1": "value1"},
@@ -382,25 +377,29 @@ class TestAPIClientPredictBatch:
             "predictions": [
                 {
                     "predictions": {"target1": {"p50": 100000.0}},
-                    "metadata": {"model_run_id": "run1", "prediction_timestamp": "2023-01-01T00:00:00"},
+                    "metadata": {
+                        "model_run_id": "run1",
+                        "prediction_timestamp": "2023-01-01T00:00:00",
+                    },
                 },
                 {
                     "predictions": {"target1": {"p50": 110000.0}},
-                    "metadata": {"model_run_id": "run1", "prediction_timestamp": "2023-01-01T00:00:00"},
+                    "metadata": {
+                        "model_run_id": "run1",
+                        "prediction_timestamp": "2023-01-01T00:00:00",
+                    },
                 },
             ],
             "total": 2,
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.predict_batch("run1", features_list)
-        
+
         assert len(result.predictions) == 2
         assert result.total == 2
         client._request.assert_called_once_with(
-            "POST",
-            "/api/v1/models/run1/predict/batch",
-            json={"features": features_list}
+            "POST", "/api/v1/models/run1/predict/batch", json={"features": features_list}
         )
 
 
@@ -413,7 +412,7 @@ class TestAPIClientUploadTrainingData:
         """Test upload_training_data with dataset_name."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         file_content = b"col1,col2\n1,2\n3,4"
         mock_response_data = {
@@ -427,9 +426,9 @@ class TestAPIClientUploadTrainingData:
             },
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.upload_training_data(file_content, "test.csv", "my_dataset")
-        
+
         assert result.dataset_id == "dataset1"
         call_kwargs = client._request.call_args[1]
         assert "files" in call_kwargs
@@ -442,7 +441,7 @@ class TestAPIClientUploadTrainingData:
         """Test upload_training_data without dataset_name."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         file_content = b"col1,col2\n1,2"
         mock_response_data = {
@@ -452,9 +451,9 @@ class TestAPIClientUploadTrainingData:
             "summary": {"total_samples": 1, "shape": [1, 2], "unique_counts": {}},
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.upload_training_data(file_content, "test.csv")
-        
+
         assert result.dataset_id == "dataset1"
         call_kwargs = client._request.call_args[1]
         assert "dataset_name" not in call_kwargs["data"]
@@ -469,12 +468,12 @@ class TestAPIClientStartTraining:
         """Test start_training with all optional parameters."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         config = {"model": {"targets": ["target1"]}}
         mock_response_data = {"job_id": "job1", "status": "QUEUED"}
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.start_training(
             dataset_id="dataset1",
             config=config,
@@ -484,7 +483,7 @@ class TestAPIClientStartTraining:
             additional_tag="test_tag",
             dataset_name="test_dataset",
         )
-        
+
         assert result.job_id == "job1"
         call_kwargs = client._request.call_args[1]
         request_data = call_kwargs["json"]
@@ -499,14 +498,14 @@ class TestAPIClientStartTraining:
         """Test start_training with minimal parameters."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         config = {"model": {"targets": ["target1"]}}
         mock_response_data = {"job_id": "job1", "status": "QUEUED"}
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.start_training(dataset_id="dataset1", config=config)
-        
+
         assert result.job_id == "job1"
         call_kwargs = client._request.call_args[1]
         request_data = call_kwargs["json"]
@@ -524,7 +523,7 @@ class TestAPIClientGetTrainingJobStatus:
         """Test successful get_training_job_status call."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         mock_response_data = {
             "job_id": "job1",
@@ -533,9 +532,9 @@ class TestAPIClientGetTrainingJobStatus:
             "run_id": "run1",
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.get_training_job_status("job1")
-        
+
         assert result.job_id == "job1"
         assert result.status == "COMPLETED"
         client._request.assert_called_once_with("GET", "/api/v1/training/jobs/job1")
@@ -550,7 +549,7 @@ class TestAPIClientListTrainingJobs:
         """Test list_training_jobs with status filter."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         mock_response_data = {
             "data": {
@@ -564,14 +563,12 @@ class TestAPIClientListTrainingJobs:
             }
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         jobs = client.list_training_jobs(limit=10, offset=5, status="COMPLETED")
-        
+
         assert len(jobs) == 1
         client._request.assert_called_once_with(
-            "GET",
-            "/api/v1/training/jobs",
-            params={"limit": 10, "offset": 5, "status": "COMPLETED"}
+            "GET", "/api/v1/training/jobs", params={"limit": 10, "offset": 5, "status": "COMPLETED"}
         )
 
     @patch("src.app.api_client.get_env_var")
@@ -580,18 +577,16 @@ class TestAPIClientListTrainingJobs:
         """Test list_training_jobs with pagination."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         mock_response_data = {"data": {"jobs": []}}
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         jobs = client.list_training_jobs(limit=20, offset=10)
-        
+
         assert len(jobs) == 0
         client._request.assert_called_once_with(
-            "GET",
-            "/api/v1/training/jobs",
-            params={"limit": 20, "offset": 10}
+            "GET", "/api/v1/training/jobs", params={"limit": 20, "offset": 10}
         )
 
 
@@ -604,7 +599,7 @@ class TestAPIClientStartWorkflow:
         """Test start_workflow with preset."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         df = pd.DataFrame({"col1": [1, 2, 3], "col2": ["a", "b", "c"]})
         mock_response_data = {
@@ -613,9 +608,9 @@ class TestAPIClientStartWorkflow:
             "state": {"phase": "classification", "status": "success"},
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.start_workflow(df, provider="gemini", preset="salary")
-        
+
         assert result.workflow_id == "workflow1"
         call_kwargs = client._request.call_args[1]
         request_data = call_kwargs["json"]
@@ -629,7 +624,7 @@ class TestAPIClientStartWorkflow:
         """Test start_workflow without preset."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         df = pd.DataFrame({"col1": [1, 2]})
         mock_response_data = {
@@ -638,9 +633,9 @@ class TestAPIClientStartWorkflow:
             "state": {"phase": "classification", "status": "success"},
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.start_workflow(df)
-        
+
         assert result.workflow_id == "workflow1"
         call_kwargs = client._request.call_args[1]
         request_data = call_kwargs["json"]
@@ -652,7 +647,7 @@ class TestAPIClientStartWorkflow:
         """Test DataFrame serialization in start_workflow."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         df = pd.DataFrame({"col1": [1, 2, 3, 4, 5] * 20})  # 100 rows
         mock_response_data = {
@@ -661,9 +656,9 @@ class TestAPIClientStartWorkflow:
             "state": {"phase": "classification", "status": "success"},
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         client.start_workflow(df)
-        
+
         call_kwargs = client._request.call_args[1]
         request_data = call_kwargs["json"]
         assert request_data["dataset_size"] == 100
@@ -679,7 +674,7 @@ class TestAPIClientGetWorkflowState:
         """Test successful get_workflow_state call."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         mock_response_data = {
             "workflow_id": "workflow1",
@@ -688,9 +683,9 @@ class TestAPIClientGetWorkflowState:
             "current_result": {},
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.get_workflow_state("workflow1")
-        
+
         assert result.workflow_id == "workflow1"
         client._request.assert_called_once_with("GET", "/api/v1/workflow/workflow1")
 
@@ -704,7 +699,7 @@ class TestAPIClientConfirmClassification:
         """Test confirm_classification modifications dict construction."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         modifications = {
             "targets": ["target1"],
@@ -717,9 +712,9 @@ class TestAPIClientConfirmClassification:
             "result": {},
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.confirm_classification("workflow1", modifications)
-        
+
         assert result.phase == "encoding"
         call_kwargs = client._request.call_args[1]
         request_data = call_kwargs["json"]
@@ -737,7 +732,7 @@ class TestAPIClientConfirmEncoding:
         """Test confirm_encoding with complex encoding modifications."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         modifications = {
             "encodings": {
@@ -760,9 +755,9 @@ class TestAPIClientConfirmEncoding:
             "result": {},
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.confirm_encoding("workflow1", modifications)
-        
+
         assert result.phase == "configuration"
         call_kwargs = client._request.call_args[1]
         request_data = call_kwargs["json"]
@@ -779,7 +774,7 @@ class TestAPIClientFinalizeConfiguration:
         """Test finalize_configuration with location_settings."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         config_updates = {
             "features": [{"name": "feat1", "monotone_constraint": 1}],
@@ -796,9 +791,9 @@ class TestAPIClientFinalizeConfiguration:
             "final_config": {"model": {"targets": ["target1"]}},
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.finalize_configuration("workflow1", config_updates)
-        
+
         assert result.phase == "complete"
         call_kwargs = client._request.call_args[1]
         request_data = call_kwargs["json"]
@@ -807,11 +802,13 @@ class TestAPIClientFinalizeConfiguration:
 
     @patch("src.app.api_client.get_env_var")
     @patch("src.app.api_client.get_logger")
-    def test_finalize_configuration_without_location_settings(self, mock_get_logger, mock_get_env_var):
+    def test_finalize_configuration_without_location_settings(
+        self, mock_get_logger, mock_get_env_var
+    ):
         """Test finalize_configuration without location_settings."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         config_updates = {
             "features": [{"name": "feat1", "monotone_constraint": 1}],
@@ -824,9 +821,9 @@ class TestAPIClientFinalizeConfiguration:
             "final_config": {"model": {"targets": ["target1"]}},
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.finalize_configuration("workflow1", config_updates)
-        
+
         assert result.phase == "complete"
         call_kwargs = client._request.call_args[1]
         request_data = call_kwargs["json"]
@@ -842,7 +839,7 @@ class TestAPIClientGetDataSummary:
         """Test DataFrame serialization in get_data_summary."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         df = pd.DataFrame({"col1": [1, 2, 3], "col2": ["a", "b", "c"]})
         mock_response_data = {
@@ -851,9 +848,9 @@ class TestAPIClientGetDataSummary:
             "unique_counts": {},
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.get_data_summary(df)
-        
+
         assert result.total_samples == 3
         call_kwargs = client._request.call_args[1]
         assert "data" in call_kwargs["json"]
@@ -871,7 +868,7 @@ class TestAPIClientGetFeatureImportance:
         """Test query parameter construction in get_feature_importance."""
         mock_get_logger.return_value = MagicMock()
         mock_get_env_var.side_effect = lambda key, default=None: default or None
-        
+
         client = APIClient()
         mock_response_data = {
             "features": [
@@ -880,14 +877,14 @@ class TestAPIClientGetFeatureImportance:
             ]
         }
         client._request = MagicMock(return_value=mock_response_data)
-        
+
         result = client.get_feature_importance("run1", "target1", 0.5)
-        
+
         assert len(result.features) == 2
         client._request.assert_called_once_with(
             "GET",
             "/api/v1/models/run1/analytics/feature-importance",
-            params={"target": "target1", "quantile": 0.5}
+            params={"target": "target1", "quantile": 0.5},
         )
 
 
@@ -897,26 +894,26 @@ class TestGetAPIClient:
     @patch("src.app.api_client.get_env_var")
     def test_get_api_client_returns_none_when_disabled(self, mock_get_env_var):
         """Test get_api_client returns None when USE_API is false."""
-        mock_get_env_var.side_effect = lambda key, default=None: {
-            "USE_API": "false"
-        }.get(key, default)
-        
+        mock_get_env_var.side_effect = lambda key, default=None: {"USE_API": "false"}.get(
+            key, default
+        )
+
         result = get_api_client()
-        
+
         assert result is None
 
     @patch("src.app.api_client.get_env_var")
     @patch("src.app.api_client.APIClient")
     def test_get_api_client_returns_client_when_enabled(self, mock_api_client, mock_get_env_var):
         """Test get_api_client returns APIClient when USE_API is true."""
-        mock_get_env_var.side_effect = lambda key, default=None: {
-            "USE_API": "true"
-        }.get(key, default)
+        mock_get_env_var.side_effect = lambda key, default=None: {"USE_API": "true"}.get(
+            key, default
+        )
         mock_instance = MagicMock()
         mock_api_client.return_value = mock_instance
-        
+
         result = get_api_client()
-        
+
         assert result == mock_instance
         mock_api_client.assert_called_once()
 
@@ -927,13 +924,12 @@ class TestGetAPIClient:
         for use_api_value in ["1", "yes", "TRUE"]:
             mock_get_env_var.reset_mock()
             mock_api_client.reset_mock()
-            mock_get_env_var.side_effect = lambda key, default=None: {
-                "USE_API": use_api_value
-            }.get(key, default)
+            mock_get_env_var.side_effect = lambda key, default=None: {"USE_API": use_api_value}.get(
+                key, default
+            )
             mock_instance = MagicMock()
             mock_api_client.return_value = mock_instance
-            
-            result = get_api_client()
-            
-            assert result == mock_instance
 
+            result = get_api_client()
+
+            assert result == mock_instance

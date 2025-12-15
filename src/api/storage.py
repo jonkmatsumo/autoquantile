@@ -1,7 +1,7 @@
 """Simple in-memory storage for datasets (MVP implementation)."""
 
 import threading
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 import pandas as pd
 
@@ -45,4 +45,3 @@ _dataset_storage = DatasetStorage()
 def get_dataset_storage() -> DatasetStorage:
     """Get the global dataset storage instance. Returns: DatasetStorage: Storage instance."""
     return _dataset_storage
-

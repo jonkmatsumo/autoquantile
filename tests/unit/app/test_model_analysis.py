@@ -47,9 +47,11 @@ def test_no_models_shows_warning(mock_streamlit, mock_registry):
 
 
 @patch("src.app.model_analysis.get_inference_service")
-def test_load_valid_model(mock_get_inference_service, mock_streamlit, mock_registry, mock_analytics):
+def test_load_valid_model(
+    mock_get_inference_service, mock_streamlit, mock_registry, mock_analytics
+):
     from src.services.inference_service import ModelSchema
-    
+
     run_data = {
         "run_id": "run123",
         "start_time": datetime(2023, 1, 1, 12, 0),
@@ -68,7 +70,7 @@ def test_load_valid_model(mock_get_inference_service, mock_streamlit, mock_regis
     mock_schema = MagicMock(spec=ModelSchema)
     mock_schema.targets = ["BaseSalary"]
     mock_schema.quantiles = [0.5]
-    
+
     mock_inference_service = mock_get_inference_service.return_value
     mock_inference_service.load_model.return_value = mock_forecaster
     mock_inference_service.get_model_schema.return_value = mock_schema
@@ -87,9 +89,11 @@ def test_load_valid_model(mock_get_inference_service, mock_streamlit, mock_regis
 
 
 @patch("src.app.model_analysis.get_inference_service")
-def test_empty_importance(mock_get_inference_service, mock_streamlit, mock_registry, mock_analytics):
+def test_empty_importance(
+    mock_get_inference_service, mock_streamlit, mock_registry, mock_analytics
+):
     from src.services.inference_service import ModelSchema
-    
+
     run_data = {
         "run_id": "run123",
         "start_time": datetime(2023, 1, 1, 12, 0),
@@ -107,7 +111,7 @@ def test_empty_importance(mock_get_inference_service, mock_streamlit, mock_regis
     mock_schema = MagicMock(spec=ModelSchema)
     mock_schema.targets = ["BaseSalary"]
     mock_schema.quantiles = [0.5]
-    
+
     mock_inference_service = mock_get_inference_service.return_value
     mock_inference_service.load_model.return_value = mock_forecaster
     mock_inference_service.get_model_schema.return_value = mock_schema
@@ -129,11 +133,11 @@ def test_fmt_score_value_error(mock_streamlit, mock_registry):
         "metrics.cv_mean_score": "invalid",
     }
     mock_registry.list_models.return_value = [run_data]
-    
+
     mock_streamlit.selectbox.return_value = None
-    
+
     render_model_analysis_ui()
-    
+
     expected_label_part = "CV:invalid"
     assert mock_streamlit.selectbox.called
 
@@ -146,11 +150,11 @@ def test_fmt_score_type_error(mock_streamlit, mock_registry):
         "metrics.cv_mean_score": None,
     }
     mock_registry.list_models.return_value = [run_data]
-    
+
     mock_streamlit.selectbox.return_value = None
-    
+
     render_model_analysis_ui()
-    
+
     expected_label_part = "CV:None"
     assert mock_streamlit.selectbox.called
 
@@ -163,46 +167,50 @@ def test_empty_selected_label_returns_early(mock_streamlit, mock_registry):
         "metrics.cv_mean_score": 0.99,
     }
     mock_registry.list_models.return_value = [run_data]
-    
+
     mock_streamlit.selectbox.return_value = None
-    
+
     render_model_analysis_ui()
-    
+
     mock_registry.load_model.assert_not_called()
 
 
 @patch("src.app.model_analysis.get_inference_service")
-def test_no_targets_shows_error(mock_get_inference_service, mock_streamlit, mock_registry, mock_analytics):
+def test_no_targets_shows_error(
+    mock_get_inference_service, mock_streamlit, mock_registry, mock_analytics
+):
     """Test that function shows error and returns when no targets found."""
     from src.services.inference_service import ModelSchema
-    
+
     run_data = {
         "run_id": "run123",
         "start_time": datetime(2023, 1, 1, 12, 0),
         "metrics.cv_mean_score": 0.99,
     }
     mock_registry.list_models.return_value = [run_data]
-    
+
     expected_label = f"2023-01-01 12:00 | CV:0.9900 | ID:run123"
     mock_streamlit.selectbox.return_value = expected_label
-    
+
     mock_forecaster = MagicMock()
     mock_schema = MagicMock(spec=ModelSchema)
     mock_schema.targets = []  # No targets
-    
+
     mock_inference_service = mock_get_inference_service.return_value
     mock_inference_service.load_model.return_value = mock_forecaster
     mock_inference_service.get_model_schema.return_value = mock_schema
-    
+
     render_model_analysis_ui()
-    
+
     mock_streamlit.error.assert_called_with(
         "This model file does not appear to contain trained models."
     )
 
 
 @patch("src.app.model_analysis.get_inference_service")
-def test_exception_handling_displays_traceback(mock_get_inference_service, mock_streamlit, mock_registry):
+def test_exception_handling_displays_traceback(
+    mock_get_inference_service, mock_streamlit, mock_registry
+):
     """Test that exceptions are caught and traceback is displayed."""
     run_data = {
         "run_id": "run123",
@@ -210,15 +218,15 @@ def test_exception_handling_displays_traceback(mock_get_inference_service, mock_
         "metrics.cv_mean_score": 0.99,
     }
     mock_registry.list_models.return_value = [run_data]
-    
+
     expected_label = f"2023-01-01 12:00 | CV:0.9900 | ID:run123"
     mock_streamlit.selectbox.return_value = expected_label
-    
+
     mock_inference_service = mock_get_inference_service.return_value
     mock_inference_service.load_model.side_effect = ValueError("Test error")
-    
+
     render_model_analysis_ui()
-    
+
     mock_streamlit.error.assert_called()
     mock_streamlit.code.assert_called()
     call_args = mock_streamlit.code.call_args[0][0]

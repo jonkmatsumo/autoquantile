@@ -1,7 +1,6 @@
 """Common DTOs for API responses and pagination."""
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
@@ -43,4 +42,3 @@ class PaginationResponse(BaseModel):
     limit: int = Field(..., ge=1, description="Limit used")
     offset: int = Field(..., ge=0, description="Offset used")
     has_more: bool = Field(..., description="Whether there are more items")
-

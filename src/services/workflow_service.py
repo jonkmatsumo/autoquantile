@@ -123,7 +123,9 @@ class WorkflowService:
             self.current_state = workflow_state
             logger.info("Workflow started successfully")
             logger.debug(f"Current state keys: {list(self.current_state.keys())}")
-            logger.debug(f"Column classification keys: {list(self.current_state.get('column_classification', {}).keys())}")
+            logger.debug(
+                f"Column classification keys: {list(self.current_state.get('column_classification', {}).keys())}"
+            )
 
             error_value = self.current_state.get("error")
             if error_value:
@@ -140,7 +142,7 @@ class WorkflowService:
                 logger.debug(f"Classification targets: {targets}")
                 logger.debug(f"Classification features: {features}")
                 logger.debug(f"Classification ignore: {ignore}")
-                
+
                 if not targets and not features and not ignore:
                     logger.warning(
                         "WARNING: Classification result is empty! All columns will show as Unclassified. "
@@ -241,8 +243,12 @@ class WorkflowService:
 
     def _format_phase_result(self, phase: str) -> Dict[str, Any]:
         """Format the current state for UI consumption. Args: phase (str): Current phase name. Returns: Dict[str, Any]: Formatted result dictionary."""
-        state = self.workflow.current_state if self.workflow and self.workflow.current_state else self.current_state
-        
+        state = (
+            self.workflow.current_state
+            if self.workflow and self.workflow.current_state
+            else self.current_state
+        )
+
         result = {
             "phase": phase,
             "status": "success" if not state.get("error") else "error",

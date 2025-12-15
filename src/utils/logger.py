@@ -2,12 +2,15 @@ import contextvars
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING, Union
 
-try:
+if TYPE_CHECKING:
     from pythonjsonlogger import jsonlogger
-except ImportError:
-    jsonlogger = None
+else:
+    try:
+        from pythonjsonlogger import jsonlogger
+    except ImportError:
+        jsonlogger = None
 
 request_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "request_id", default=None
@@ -55,6 +58,7 @@ def setup_logging(
 
     request_id_filter = RequestIDFilter()
 
+    formatter: Union[jsonlogger.JsonFormatter, logging.Formatter]
     if json_format and jsonlogger:
         formatter = jsonlogger.JsonFormatter(
             "%(asctime)s %(name)s %(levelname)s %(message)s %(request_id)s",

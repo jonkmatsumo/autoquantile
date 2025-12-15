@@ -1,10 +1,10 @@
 """Model management API endpoints."""
 
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from src.api.dto.common import BaseResponse, PaginationParams, PaginationResponse
+from src.api.dto.common import BaseResponse, PaginationResponse
 from src.api.dto.models import (
     ModelDetailsResponse,
     ModelMetadata,
@@ -170,4 +170,3 @@ async def get_model_schema(
         return ModelSchemaResponse(run_id=run_id, model_schema=model_schema)
     except ModelNotFoundError as e:
         raise APIModelNotFoundError(run_id) from e
-

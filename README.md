@@ -2,6 +2,10 @@
 
 A framework for **Multi-Target Quantile Regression** using **XGBoost**. Automates the lifecycle of probabilistic modeling—from feature engineering to hyperparameter tuning and model versioning.
 
+## Requirements
+
+- Python 3.9 or higher (tested with Python 3.12)
+
 Key features include:
 - **Automated Versioning**: Automatically tracks and versions trained models using **MLflow**.
 - **Auto-Tuning**: Integrated Hyperparameter Optimization using **Optuna** to automatically find the best model parameters.
@@ -15,7 +19,7 @@ Key features include:
 
 1. Create a virtual environment (recommended):
     ```bash
-    python3 -m venv .venv
+    python3.12 -m venv .venv
     source .venv/bin/activate  # On Windows: .venv\Scripts\activate
     ```
 

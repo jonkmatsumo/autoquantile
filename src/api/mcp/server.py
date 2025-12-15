@@ -1,14 +1,13 @@
 """MCP server implementation using JSON-RPC 2.0."""
 
-import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from src.api.dependencies import get_current_user
 from src.api.mcp.handlers import MCPToolHandler
-from src.api.mcp.tools import MCPTool, get_mcp_tools
+from src.api.mcp.tools import get_mcp_tools
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -136,4 +135,3 @@ async def handle_tools_list() -> Dict[str, Any]:
 def register_mcp_tools(app: Any) -> None:
     """Register MCP router with FastAPI app. Args: app (Any): FastAPI application. Returns: None."""
     app.include_router(mcp_router)
-

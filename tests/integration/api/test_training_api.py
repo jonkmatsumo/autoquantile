@@ -89,4 +89,3 @@ def test_get_training_job_status_not_found(client, api_key):
     data = response.json()
     assert data["status"] == "error"
     assert data["error"]["code"] == "TRAINING_JOB_NOT_FOUND"
-

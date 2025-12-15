@@ -140,9 +140,7 @@ class InferenceService:
 
         return ValidationResult(is_valid=len(errors) == 0, errors=errors)
 
-    def predict(
-        self, model: SalaryForecaster, features: Dict[str, Any]
-    ) -> PredictionResult:
+    def predict(self, model: SalaryForecaster, features: Dict[str, Any]) -> PredictionResult:
         """Execute prediction for given features. Args: model (SalaryForecaster): Model instance. features (Dict[str, Any]): Input feature dictionary. Returns: PredictionResult: Prediction result. Raises: InvalidInputError: If input features are invalid."""
         validation_result = self.validate_input_features(model, features)
         if not validation_result.is_valid:
@@ -181,9 +179,7 @@ class InferenceService:
             self.logger.error(f"Prediction failed: {e}", exc_info=True)
             raise InvalidInputError(f"Prediction failed: {str(e)}") from e
 
-    def format_predictions(
-        self, predictions: Dict[str, Dict[str, float]]
-    ) -> List[Dict[str, Any]]:
+    def format_predictions(self, predictions: Dict[str, Dict[str, float]]) -> List[Dict[str, Any]]:
         """Format predictions for display. Args: predictions (Dict[str, Dict[str, float]]): Raw predictions. Returns: List[Dict[str, Any]]: Formatted predictions as list of rows."""
         formatted: List[Dict[str, Any]] = []
         for target, preds in predictions.items():
@@ -191,4 +187,3 @@ class InferenceService:
             row.update(preds)
             formatted.append(row)
         return formatted
-

@@ -83,7 +83,10 @@ def parse_configuration_response(response_content: str) -> Dict[str, Any]:
         else:
             json_str = response_content.strip()
 
-        result = json.loads(json_str)
+        parsed = json.loads(json_str)
+        if not isinstance(parsed, dict):
+            raise ValueError(f"Expected dict, got {type(parsed)}")
+        result: Dict[str, Any] = parsed
 
         # Ensure required keys with defaults
         if "features" not in result:
@@ -175,11 +178,18 @@ def run_model_configurator_sync(
     messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
 
     response = llm.invoke(messages)
-    result = parse_configuration_response(response.content)
+    response_content_raw = response.content if response.content else ""
+    if isinstance(response_content_raw, str):
+        response_content = response_content_raw
+    elif isinstance(response_content_raw, list):
+        response_content = str(response_content_raw[0]) if response_content_raw else ""
+    else:
+        response_content = str(response_content_raw)
+    result: Dict[str, Any] = parse_configuration_response(response_content)
     log_agent_interaction(
         "model_configurator",
         system_prompt,
         user_prompt,
-        response.content if response.content else "",
+        response_content,
     )
     return result

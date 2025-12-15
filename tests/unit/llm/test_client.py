@@ -374,19 +374,21 @@ def test_openai_client_retry_on_rate_limit_error(mock_sleep, mock_openai, mock_g
     mock_get_env.return_value = "fake-key"
     mock_client = MagicMock()
     mock_openai.return_value = mock_client
-    
+
     mock_response = MagicMock()
     mock_response.choices[0].message.content = "Success"
-    
-    rate_limit_error = RateLimitError(message="Rate limit exceeded", response=MagicMock(), body=None)
+
+    rate_limit_error = RateLimitError(
+        message="Rate limit exceeded", response=MagicMock(), body=None
+    )
     mock_client.chat.completions.create.side_effect = [
         rate_limit_error,
         mock_response,
     ]
-    
+
     client = OpenAIClient()
     response = client.generate("test")
-    
+
     assert response == "Success"
     assert mock_client.chat.completions.create.call_count == 2
     mock_sleep.assert_called_once()
@@ -400,19 +402,19 @@ def test_openai_client_retry_on_api_error(mock_sleep, mock_openai, mock_get_env)
     mock_get_env.return_value = "fake-key"
     mock_client = MagicMock()
     mock_openai.return_value = mock_client
-    
+
     mock_response = MagicMock()
     mock_response.choices[0].message.content = "Success"
-    
+
     api_error = APIError(message="API error", request=MagicMock(), body=None)
     mock_client.chat.completions.create.side_effect = [
         api_error,
         mock_response,
     ]
-    
+
     client = OpenAIClient()
     response = client.generate("test")
-    
+
     assert response == "Success"
     assert mock_client.chat.completions.create.call_count == 2
 
@@ -425,14 +427,16 @@ def test_openai_client_max_retries_exceeded(mock_sleep, mock_openai, mock_get_en
     mock_get_env.return_value = "fake-key"
     mock_client = MagicMock()
     mock_openai.return_value = mock_client
-    
-    rate_limit_error = RateLimitError(message="Rate limit exceeded", response=MagicMock(), body=None)
+
+    rate_limit_error = RateLimitError(
+        message="Rate limit exceeded", response=MagicMock(), body=None
+    )
     mock_client.chat.completions.create.side_effect = rate_limit_error
-    
+
     client = OpenAIClient()
     with pytest.raises(RateLimitError):
         client.generate("test")
-    
+
     assert mock_client.chat.completions.create.call_count == 3
 
 
@@ -443,11 +447,11 @@ def test_openai_client_empty_content_raises_error(mock_openai, mock_get_env):
     mock_get_env.return_value = "fake-key"
     mock_client = MagicMock()
     mock_openai.return_value = mock_client
-    
+
     mock_response = MagicMock()
     mock_response.choices[0].message.content = None
     mock_client.chat.completions.create.return_value = mock_response
-    
+
     client = OpenAIClient()
     with pytest.raises(ValueError, match="OpenAI returned empty response content"):
         client.generate("test")
@@ -460,13 +464,13 @@ def test_openai_client_non_retryable_exception_propagates(mock_openai, mock_get_
     mock_get_env.return_value = "fake-key"
     mock_client = MagicMock()
     mock_openai.return_value = mock_client
-    
+
     mock_client.chat.completions.create.side_effect = ValueError("Non-retryable error")
-    
+
     client = OpenAIClient()
     with pytest.raises(ValueError, match="Non-retryable error"):
         client.generate("test")
-    
+
     assert mock_client.chat.completions.create.call_count == 1
 
 
@@ -477,14 +481,14 @@ def test_openai_client_generate_with_system_prompt(mock_openai, mock_get_env):
     mock_get_env.return_value = "fake-key"
     mock_client = MagicMock()
     mock_openai.return_value = mock_client
-    
+
     mock_response = MagicMock()
     mock_response.choices[0].message.content = "Response"
     mock_client.chat.completions.create.return_value = mock_response
-    
+
     client = OpenAIClient()
     client.generate("User prompt", system_prompt="System prompt")
-    
+
     call_args = mock_client.chat.completions.create.call_args
     messages = call_args[1]["messages"]
     assert messages[0]["role"] == "system"
@@ -500,27 +504,27 @@ def test_openai_client_generate_with_system_prompt(mock_openai, mock_get_env):
 def test_openai_client_agenerate_success(mock_asleep, mock_openai, mock_get_env, mock_async_openai):
     """Test OpenAIClient.agenerate successful async generation."""
     import asyncio
-    
+
     mock_get_env.return_value = "fake-key"
     mock_openai.return_value = MagicMock()
-    
+
     mock_async_client = MagicMock()
     mock_async_openai.return_value = mock_async_client
-    
+
     mock_response = MagicMock()
     mock_response.choices[0].message.content = "Async Response"
-    
+
     async def mock_create(*args, **kwargs):
         return mock_response
-    
+
     mock_async_client.chat.completions.create = mock_create
-    
+
     client = OpenAIClient()
-    
+
     async def run_test():
         response = await client.agenerate("test")
         assert response == "Async Response"
-    
+
     asyncio.run(run_test())
 
 

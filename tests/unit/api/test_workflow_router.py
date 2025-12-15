@@ -253,11 +253,13 @@ class TestConfirmClassification:
         assert response.phase == "encoding"
         assert response.result == {"encodings": {}}
 
-        mock_service.confirm_classification.assert_called_once_with({
-            "targets": ["target1", "target2"],
-            "features": ["feat1", "feat2"],
-            "ignore": ["ignore1"],
-        })
+        mock_service.confirm_classification.assert_called_once_with(
+            {
+                "targets": ["target1", "target2"],
+                "features": ["feat1", "feat2"],
+                "ignore": ["ignore1"],
+            }
+        )
 
 
 class TestConfirmEncoding:
@@ -513,4 +515,3 @@ class TestFinalizeConfiguration:
         assert final_features[0]["name"] == "new_feat1"
         assert final_features[1]["name"] == "new_feat2"
         assert response.final_config["model"]["quantiles"] == [0.1, 0.25, 0.5, 0.75, 0.9]
-

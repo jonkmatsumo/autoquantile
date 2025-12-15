@@ -9,6 +9,7 @@ from src.xgboost.model import SalaryForecaster
 # Import conftest function directly (pytest will handle the path)
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from conftest import create_test_config
 
@@ -26,7 +27,9 @@ class TestTrainingService(unittest.TestCase):
 
         callback = MagicMock()
 
-        model = self.service.train_model(self.df, self.config, remove_outliers=True, callback=callback)
+        model = self.service.train_model(
+            self.df, self.config, remove_outliers=True, callback=callback
+        )
 
         # Verify Forecaster was instantiated with config
         MockForecaster.assert_called_once_with(config=self.config)
@@ -150,7 +153,7 @@ class TestTrainingService(unittest.TestCase):
                 "targets": ["Salary"],
                 "features": [{"name": "Level", "monotone_constraint": 1}],
                 "quantiles": [0.5],
-            }
+            },
             # No optional_encodings field
         }
 

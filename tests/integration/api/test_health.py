@@ -16,4 +16,3 @@ def test_health_check_no_auth(client_no_auth):
     response = client_no_auth.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
-

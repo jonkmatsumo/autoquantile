@@ -2,20 +2,11 @@
 
 from typing import Any, Dict
 
-from src.api.dto.analytics import FeatureImportanceResponse
-from src.api.dto.inference import PredictionResponse
-from src.api.dto.models import ModelDetailsResponse, ModelMetadata, ModelSchemaResponse
-from src.api.dto.training import TrainingJobResponse, TrainingJobStatusResponse
-from src.api.dto.workflow import (
-    WorkflowCompleteResponse,
-    WorkflowProgressResponse,
-    WorkflowStartResponse,
-)
+from src.api.dto.models import ModelMetadata
 from src.services.analytics_service import AnalyticsService
 from src.services.inference_service import InferenceService
 from src.services.model_registry import ModelRegistry
 from src.services.training_service import TrainingService
-from src.services.workflow_service import WorkflowService
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -89,12 +80,18 @@ class MCPToolHandler:
 
     async def _handle_get_model_details(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle get_model_details tool. Args: args (Dict[str, Any]): Arguments. Returns: Dict[str, Any]: Result."""
-        from src.api.dto.models import ModelDetailsResponse, ModelMetadata, ModelSchema, ProximityFeatureSchema, RankedFeatureSchema
+        from src.api.dto.models import (
+            ModelDetailsResponse,
+            ModelMetadata,
+            ModelSchema,
+            ProximityFeatureSchema,
+            RankedFeatureSchema,
+        )
         from src.api.exceptions import ModelNotFoundError as APIModelNotFoundError
         from src.services.inference_service import ModelNotFoundError
 
         run_id = args["run_id"]
-        
+
         try:
             model = self.inference_service.load_model(run_id)
             schema = self.inference_service.get_model_schema(model)
@@ -148,12 +145,17 @@ class MCPToolHandler:
 
     async def _handle_get_model_schema(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle get_model_schema tool. Args: args (Dict[str, Any]): Arguments. Returns: Dict[str, Any]: Result."""
-        from src.api.dto.models import ModelSchema, ModelSchemaResponse, ProximityFeatureSchema, RankedFeatureSchema
+        from src.api.dto.models import (
+            ModelSchema,
+            ModelSchemaResponse,
+            ProximityFeatureSchema,
+            RankedFeatureSchema,
+        )
         from src.api.exceptions import ModelNotFoundError as APIModelNotFoundError
         from src.services.inference_service import ModelNotFoundError
 
         run_id = args["run_id"]
-        
+
         try:
             model = self.inference_service.load_model(run_id)
             schema = self.inference_service.get_model_schema(model)
@@ -197,7 +199,7 @@ class MCPToolHandler:
             result = self.inference_service.predict(model, features)
 
             from datetime import datetime
-            
+
             metadata_dict = result.metadata if isinstance(result.metadata, dict) else {}
             metadata_obj = PredictionMetadata(
                 model_run_id=metadata_dict.get("model_run_id", run_id),
@@ -211,6 +213,7 @@ class MCPToolHandler:
             return response.model_dump()
         except ModelNotFoundError as e:
             from src.api.exceptions import ModelNotFoundError as APIModelNotFoundError
+
             raise APIModelNotFoundError(run_id) from e
         except InvalidInputError as e:
             raise APIInvalidInputError(str(e)) from e
@@ -300,7 +303,10 @@ class MCPToolHandler:
         workflow_id = args["workflow_id"]
         modifications = args["modifications"]
 
-        from src.api.dto.workflow import ClassificationConfirmationRequest, ClassificationModifications
+        from src.api.dto.workflow import (
+            ClassificationConfirmationRequest,
+            ClassificationModifications,
+        )
 
         request_body = ClassificationConfirmationRequest(
             modifications=ClassificationModifications(
@@ -310,9 +316,7 @@ class MCPToolHandler:
             )
         )
 
-        response = await confirm_classification(
-            workflow_id, request_body, user="mcp"
-        )
+        response = await confirm_classification(workflow_id, request_body, user="mcp")
         return response.model_dump()
 
     async def _handle_confirm_encoding(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -401,4 +405,3 @@ class MCPToolHandler:
             analytics_service=self.analytics_service,
         )
         return response.model_dump()
-

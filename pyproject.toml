@@ -15,10 +15,10 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.9,<3.13"
 # Dependencies use flexible version constraints (>=) for development
 # For reproducible builds, see requirements.txt with pinned versions
-# Tested with Python 3.9, 3.10, 3.11 (see CI matrix)
+# Tested with Python 3.12 (see CI matrix)
 dependencies = [
     "xgboost>=2.0.0",
     "pandas>=2.0.0",
@@ -33,7 +33,7 @@ dependencies = [
     "openai>=1.0.0",
     "google-generativeai>=0.3.0",
     "python-dotenv>=1.0.0",
-    "urllib3<2.0.0",
+    "urllib3>=2.0.0",
     "langgraph>=0.2.0",
     "langchain>=0.3.0",
     "langchain-openai>=0.2.0",
@@ -71,7 +71,7 @@ addopts = "-v --cov=src --cov-report=term-missing --cov-report=html"
 
 [tool.black]
 line-length = 100
-target-version = ["py39", "py310", "py311"]
+target-version = ["py312"]
 include = '\.pyi?$'
 exclude = '''
 /(

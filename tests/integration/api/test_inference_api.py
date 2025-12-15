@@ -96,4 +96,3 @@ def test_batch_predict_works_without_auth_when_key_not_set(client_no_auth):
         json={"features": [{"Level": "L4"}]},
     )
     assert response.status_code in [200, 401, 404]
-

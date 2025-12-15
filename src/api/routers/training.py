@@ -1,10 +1,8 @@
 """Training API endpoints."""
 
-import io
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, Query
-from fastapi.responses import JSONResponse
 
 from src.api.dto.common import BaseResponse, PaginationResponse
 from src.api.dto.training import (
@@ -16,7 +14,6 @@ from src.api.dto.training import (
 )
 from src.api.dependencies import get_current_user
 from src.api.exceptions import InvalidInputError, TrainingJobNotFoundError
-from src.api.exceptions import InvalidInputError as APIInvalidInputError
 from src.api.storage import get_dataset_storage
 from src.services.analytics_service import AnalyticsService
 from src.services.training_service import TrainingService
@@ -58,10 +55,10 @@ async def upload_training_data(
         raise InvalidInputError("Failed to parse CSV file")
 
     dataset_id = str(uuid.uuid4())
-    
+
     storage = get_dataset_storage()
     storage.store(dataset_id, df)
-    
+
     summary = analytics_service.get_data_summary(df)
 
     from src.api.dto.analytics import DataSummary
@@ -92,13 +89,13 @@ async def start_training(
 ):
     """Start a training job. Args: request (TrainingJobRequest): Training job request. user (str): Current user. training_service (TrainingService): Training service. Returns: TrainingJobResponse: Job response. Raises: InvalidInputError: If request validation fails."""
     dataset_id = request.dataset_id
-    
+
     storage = get_dataset_storage()
     df = storage.get(dataset_id)
-    
+
     if df is None:
         raise InvalidInputError(f"Dataset {dataset_id} not found")
-    
+
     try:
         job_id = training_service.start_training_async(
             data=df,
@@ -140,7 +137,11 @@ async def get_training_job_status(
     return TrainingJobStatusResponse(
         job_id=job_id,
         status=job_status["status"],
-        progress=0.5 if job_status["status"] == "RUNNING" else (1.0 if job_status["status"] == "COMPLETED" else 0.0),
+        progress=(
+            0.5
+            if job_status["status"] == "RUNNING"
+            else (1.0 if job_status["status"] == "COMPLETED" else 0.0)
+        ),
         logs=job_status.get("logs", []),
         submitted_at=job_status.get("submitted_at"),
         completed_at=job_status.get("completed_at"),
@@ -185,4 +186,3 @@ async def list_training_jobs(
             ).model_dump(),
         },
     )
-
