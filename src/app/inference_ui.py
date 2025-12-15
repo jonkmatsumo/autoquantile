@@ -1,12 +1,69 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 import streamlit as st
 
+from src.app.api_client import APIError, get_api_client
 from src.services.analytics_service import AnalyticsService
 from src.services.model_registry import ModelRegistry
+
+
+def render_model_information_api(model_details: Any, run_id: str, runs: List[Dict[str, Any]]) -> None:
+    """Display model metadata and feature information from API. Args: model_details (Any): Model details response. run_id (str): MLflow run ID. runs (List[Dict[str, Any]]): List of all runs. Returns: None."""
+    st.markdown("---")
+    st.subheader("Model Information")
+
+    with st.expander("Model Metadata", expanded=True):
+        metadata = model_details.metadata
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**Run ID:** `{run_id[:8]}`")
+            if metadata.start_time:
+                if hasattr(metadata.start_time, "strftime"):
+                    st.markdown(f"**Training Date:** {metadata.start_time.strftime('%Y-%m-%d %H:%M')}")
+                else:
+                    st.markdown(f"**Training Date:** {metadata.start_time}")
+            st.markdown(f"**Model Type:** {metadata.model_type}")
+        with col2:
+            cv_score = metadata.cv_mean_score
+            if cv_score is not None:
+                cv_score = f"{cv_score:.4f}"
+            else:
+                cv_score = "N/A"
+            st.markdown(f"**CV Score:** {cv_score}")
+            st.markdown(f"**Dataset:** {metadata.dataset_name}")
+
+            if metadata.additional_tag:
+                st.markdown(f"**Tag:** {metadata.additional_tag}")
+
+    with st.expander("Feature Information", expanded=False):
+        schema = model_details.model_schema
+        if schema:
+            if schema.ranked_features:
+                st.markdown("**Ranked Features:**")
+                for ranked_feat in schema.ranked_features:
+                    levels = ranked_feat.levels or []
+                    st.markdown(
+                        f"- **{ranked_feat.name}**: {len(levels)} levels - {', '.join(levels[:5])}{'...' if len(levels) > 5 else ''}"
+                    )
+
+            if schema.proximity_features:
+                st.markdown("**Proximity Features:**")
+                for prox_feat in schema.proximity_features:
+                    st.markdown(f"- **{prox_feat.name}**: Proximity-based encoding")
+
+            if schema.numerical_features:
+                st.markdown("**Numerical Features:**")
+                st.markdown(f"- {', '.join(schema.numerical_features[:10])}{'...' if len(schema.numerical_features) > 10 else ''}")
+
+            total_features = (
+                len(schema.ranked_features or [])
+                + len(schema.proximity_features or [])
+                + len(schema.numerical_features or [])
+            )
+            st.markdown(f"**Total Features:** {total_features}")
 
 
 def render_model_information(forecaster: Any, run_id: str, runs: List[Dict[str, Any]]) -> None:
@@ -80,8 +137,30 @@ def render_inference_ui() -> None:
     """Render the inference interface. Returns: None."""
     st.header("Salary Inference")
 
-    registry = ModelRegistry()
-    runs = registry.list_models()
+    api_client = get_api_client()
+    use_api = api_client is not None
+
+    if use_api:
+        try:
+            models = api_client.list_models()
+            runs = [
+                {
+                    "run_id": m.run_id,
+                    "start_time": m.start_time,
+                    "tags.model_type": m.model_type,
+                    "tags.dataset_name": m.dataset_name,
+                    "tags.additional_tag": m.additional_tag,
+                    "tags.output_filename": None,
+                    "metrics.cv_mean_score": m.cv_mean_score,
+                }
+                for m in models
+            ]
+        except APIError as e:
+            st.error(f"Failed to load models from API: {e.message}")
+            return
+    else:
+        registry = ModelRegistry()
+        runs = registry.list_models()
 
     if not runs:
         st.warning("No trained models found in MLflow. Please train a new model.")
@@ -120,142 +199,295 @@ def render_inference_ui() -> None:
 
     run_id = run_options[selected_label]
 
-    if "forecaster" not in st.session_state or st.session_state.get("current_run_id") != run_id:
-        with st.spinner(f"Loading model from MLflow run {run_id}..."):
-            try:
-                st.session_state["forecaster"] = registry.load_model(run_id)
-                st.session_state["current_run_id"] = run_id
-            except Exception as e:
-                st.error(f"Failed to load model: {e}")
-                return
-
-    forecaster = st.session_state["forecaster"]
-    render_model_information(forecaster, run_id, runs)
+    if use_api:
+        if "model_details" not in st.session_state or st.session_state.get("current_run_id") != run_id:
+            with st.spinner(f"Loading model details from API for run {run_id}..."):
+                try:
+                    model_details = api_client.get_model_details(run_id)
+                    st.session_state["model_details"] = model_details
+                    st.session_state["current_run_id"] = run_id
+                except APIError as e:
+                    st.error(f"Failed to load model details: {e.message}")
+                    return
+        model_details = st.session_state["model_details"]
+        render_model_information_api(model_details, run_id, runs)
+    else:
+        if "forecaster" not in st.session_state or st.session_state.get("current_run_id") != run_id:
+            with st.spinner(f"Loading model from MLflow run {run_id}..."):
+                try:
+                    registry = ModelRegistry()
+                    st.session_state["forecaster"] = registry.load_model(run_id)
+                    st.session_state["current_run_id"] = run_id
+                except Exception as e:
+                    st.error(f"Failed to load model: {e}")
+                    return
+        forecaster = st.session_state["forecaster"]
+        render_model_information(forecaster, run_id, runs)
 
     with st.expander("Model Analysis", expanded=False):
-        analytics_service = AnalyticsService()
-        targets = analytics_service.get_available_targets(forecaster)
-
-        if not targets:
-            st.warning("No targets available in this model.")
-        else:
-            viz_options = ["Feature Importance"]
-            selected_viz = st.selectbox(
-                "Select Visualization", viz_options, key="model_analysis_viz"
-            )
-
-            st.markdown("---")
-
-            if selected_viz == "Feature Importance":
-                selected_target = st.selectbox(
-                    "Select Target Component", targets, key="model_analysis_target"
+        if use_api:
+            model_details = st.session_state["model_details"]
+            targets = model_details.targets
+            
+            if not targets:
+                st.warning("No targets available in this model.")
+            else:
+                viz_options = ["Feature Importance"]
+                selected_viz = st.selectbox(
+                    "Select Visualization", viz_options, key="model_analysis_viz"
                 )
 
-                if selected_target:
-                    quantiles = analytics_service.get_available_quantiles(
-                        forecaster, selected_target
+                st.markdown("---")
+
+                if selected_viz == "Feature Importance":
+                    selected_target = st.selectbox(
+                        "Select Target Component", targets, key="model_analysis_target"
                     )
-                    if quantiles:
-                        selected_q_val = st.selectbox(
-                            "Select Quantile",
-                            quantiles,
-                            format_func=lambda x: f"P{int(x*100)}",
-                            key="model_analysis_quantile",
-                        )
 
-                        df_imp = analytics_service.get_feature_importance(
-                            forecaster, selected_target, selected_q_val
-                        )
-                        if df_imp is not None and not df_imp.empty:
-                            st.dataframe(df_imp, width="stretch")
+                    if selected_target:
+                        quantiles = model_details.quantiles
+                        if quantiles:
+                            selected_q_val = st.selectbox(
+                                "Select Quantile",
+                                quantiles,
+                                format_func=lambda x: f"P{int(x*100)}",
+                                key="model_analysis_quantile",
+                            )
 
-                            fig, ax = plt.subplots(figsize=(10, 6))
-                            sns.barplot(
-                                data=df_imp.head(20),
-                                x="Gain",
-                                y="Feature",
-                                ax=ax,
-                                palette="viridis",
-                                hue="Feature",
-                                legend=False,
-                            )
-                            ax.set_title(
-                                f"Top 20 Features for {selected_target} (P{int(selected_q_val*100)})"
-                            )
-                            st.pyplot(fig)
+                            with st.spinner("Loading feature importance..."):
+                                try:
+                                    importance_response = api_client.get_feature_importance(
+                                        run_id, selected_target, selected_q_val
+                                    )
+                                    if importance_response.features:
+                                        df_imp = pd.DataFrame(
+                                            [{"Feature": f.name, "Gain": f.gain} for f in importance_response.features]
+                                        )
+                                        if not df_imp.empty:
+                                            st.dataframe(df_imp, width="stretch")
+
+                                            fig, ax = plt.subplots(figsize=(10, 6))
+                                            sns.barplot(
+                                                data=df_imp.head(20),
+                                                x="Gain",
+                                                y="Feature",
+                                                ax=ax,
+                                                palette="viridis",
+                                                hue="Feature",
+                                                legend=False,
+                                            )
+                                            ax.set_title(
+                                                f"Top 20 Features for {selected_target} (P{int(selected_q_val*100)})"
+                                            )
+                                            st.pyplot(fig)
+                                        else:
+                                            st.warning(
+                                                f"No feature importance scores found for {selected_target} at P{int(selected_q_val*100)}."
+                                            )
+                                    else:
+                                        st.warning(
+                                            f"No feature importance scores found for {selected_target} at P{int(selected_q_val*100)}."
+                                        )
+                                except APIError as e:
+                                    st.error(f"Failed to load feature importance: {e.message}")
                         else:
-                            st.warning(
-                                f"No feature importance scores found for {selected_target} at P{int(selected_q_val*100)}."
+                            st.warning(f"No quantiles available for target {selected_target}.")
+        else:
+            forecaster = st.session_state["forecaster"]
+            analytics_service = AnalyticsService()
+            targets = analytics_service.get_available_targets(forecaster)
+
+            if not targets:
+                st.warning("No targets available in this model.")
+            else:
+                viz_options = ["Feature Importance"]
+                selected_viz = st.selectbox(
+                    "Select Visualization", viz_options, key="model_analysis_viz"
+                )
+
+                st.markdown("---")
+
+                if selected_viz == "Feature Importance":
+                    selected_target = st.selectbox(
+                        "Select Target Component", targets, key="model_analysis_target"
+                    )
+
+                    if selected_target:
+                        quantiles = analytics_service.get_available_quantiles(
+                            forecaster, selected_target
+                        )
+                        if quantiles:
+                            selected_q_val = st.selectbox(
+                                "Select Quantile",
+                                quantiles,
+                                format_func=lambda x: f"P{int(x*100)}",
+                                key="model_analysis_quantile",
                             )
-                    else:
-                        st.warning(f"No quantiles available for target {selected_target}.")
+
+                            df_imp = analytics_service.get_feature_importance(
+                                forecaster, selected_target, selected_q_val
+                            )
+                            if df_imp is not None and not df_imp.empty:
+                                st.dataframe(df_imp, width="stretch")
+
+                                fig, ax = plt.subplots(figsize=(10, 6))
+                                sns.barplot(
+                                    data=df_imp.head(20),
+                                    x="Gain",
+                                    y="Feature",
+                                    ax=ax,
+                                    palette="viridis",
+                                    hue="Feature",
+                                    legend=False,
+                                )
+                                ax.set_title(
+                                    f"Top 20 Features for {selected_target} (P{int(selected_q_val*100)})"
+                                )
+                                st.pyplot(fig)
+                            else:
+                                st.warning(
+                                    f"No feature importance scores found for {selected_target} at P{int(selected_q_val*100)}."
+                                )
+                        else:
+                            st.warning(f"No quantiles available for target {selected_target}.")
 
     st.markdown("---")
 
-    with st.form("inference_form"):
-        st.subheader("Input Features")
-        c1, c2 = st.columns(2)
+    if use_api:
+        model_details = st.session_state["model_details"]
+        schema = model_details.model_schema
+        if not schema:
+            st.error("Model schema not available")
+            return
 
-        input_data = {}
+        with st.form("inference_form"):
+            st.subheader("Input Features")
+            c1, c2 = st.columns(2)
 
-        with c1:
-            for col_name, encoder in forecaster.ranked_encoders.items():
-                levels = list(encoder.mapping.keys())
-                val = st.selectbox(col_name, levels, key=f"input_{col_name}")
-                input_data[col_name] = val
+            input_data = {}
 
-            for col_name, encoder in forecaster.proximity_encoders.items():
-                val = st.text_input(col_name, "New York", key=f"input_{col_name}")
-                input_data[col_name] = val
+            with c1:
+                for ranked_feat in schema.ranked_features or []:
+                    levels = ranked_feat.levels or []
+                    val = st.selectbox(ranked_feat.name, levels, key=f"input_{ranked_feat.name}")
+                    input_data[ranked_feat.name] = val
 
-        with c2:
-            handled = list(forecaster.ranked_encoders.keys()) + list(
-                forecaster.proximity_encoders.keys()
+                for prox_feat in schema.proximity_features or []:
+                    val = st.text_input(prox_feat.name, "New York", key=f"input_{prox_feat.name}")
+                    input_data[prox_feat.name] = val
+
+            with c2:
+                handled = [f.name for f in (schema.ranked_features or [])] + [
+                    f.name for f in (schema.proximity_features or [])
+                ]
+                remaining = [
+                    f for f in (schema.numerical_features or []) if f not in handled
+                ]
+
+                for feat in remaining:
+                    val = st.number_input(feat, 0, 100, 5, key=f"input_{feat}")
+                    input_data[feat] = val
+
+            submitted = st.form_submit_button("Predict")
+
+        if submitted:
+            with st.spinner("Predicting..."):
+                try:
+                    response = api_client.predict(run_id, input_data)
+                    results = response.data.predictions if response.data else {}
+                except APIError as e:
+                    st.error(f"Prediction failed: {e.message}")
+                    return
+
+            st.subheader("Prediction Results")
+
+            res_data = []
+            for target, preds in results.items():
+                row = {"Component": target}
+                for q_key, val in preds.items():
+                    row[q_key] = val
+                res_data.append(row)
+
+            res_df = pd.DataFrame(res_data)
+            chart_df = res_df.set_index("Component").T
+
+            try:
+                sorted_index = sorted(chart_df.index, key=lambda x: int(x.replace("p", "")))
+                chart_df = chart_df.reindex(sorted_index)
+            except ValueError:
+                pass
+
+            st.line_chart(chart_df)
+
+            st.dataframe(
+                res_df.style.format({c: "${:,.0f}" for c in res_df.columns if c != "Component"})
             )
-            remaining = [
-                f
-                for f in forecaster.feature_names
-                if f not in handled and f not in [f"{h}_Enc" for h in handled]
-            ]
+    else:
+        forecaster = st.session_state["forecaster"]
+        with st.form("inference_form"):
+            st.subheader("Input Features")
+            c1, c2 = st.columns(2)
 
-            for feat in remaining:
-                val = st.number_input(feat, 0, 100, 5, key=f"input_{feat}")
-                input_data[feat] = val
+            input_data = {}
 
-        submitted = st.form_submit_button("Predict")
+            with c1:
+                for col_name, encoder in forecaster.ranked_encoders.items():
+                    levels = list(encoder.mapping.keys())
+                    val = st.selectbox(col_name, levels, key=f"input_{col_name}")
+                    input_data[col_name] = val
 
-    if submitted:
-        input_df = pd.DataFrame([input_data])
+                for col_name, encoder in forecaster.proximity_encoders.items():
+                    val = st.text_input(col_name, "New York", key=f"input_{col_name}")
+                    input_data[col_name] = val
 
-        with st.spinner("Predicting..."):
-            results = forecaster.predict(input_df)
+            with c2:
+                handled = list(forecaster.ranked_encoders.keys()) + list(
+                    forecaster.proximity_encoders.keys()
+                )
+                remaining = [
+                    f
+                    for f in forecaster.feature_names
+                    if f not in handled and f not in [f"{h}_Enc" for h in handled]
+                ]
 
-        st.subheader("Prediction Results")
+                for feat in remaining:
+                    val = st.number_input(feat, 0, 100, 5, key=f"input_{feat}")
+                    input_data[feat] = val
 
-        if "Location" in forecaster.proximity_encoders:
-            encoder = forecaster.proximity_encoders["Location"]
-            loc_val = input_data.get("Location")
-            if loc_val:
-                st.markdown(f"**Target Location Zone:** {encoder.mapper.get_zone(loc_val)}")
+            submitted = st.form_submit_button("Predict")
 
-        res_data = []
-        for target, preds in results.items():
-            row = {"Component": target}
-            for q_key, val in preds.items():
-                row[q_key] = val[0]
-            res_data.append(row)
+        if submitted:
+            input_df = pd.DataFrame([input_data])
 
-        res_df = pd.DataFrame(res_data)
-        chart_df = res_df.set_index("Component").T
+            with st.spinner("Predicting..."):
+                results = forecaster.predict(input_df)
 
-        try:
-            sorted_index = sorted(chart_df.index, key=lambda x: int(x.replace("p", "")))
-            chart_df = chart_df.reindex(sorted_index)
-        except ValueError:
-            pass
+            st.subheader("Prediction Results")
 
-        st.line_chart(chart_df)
+            if "Location" in forecaster.proximity_encoders:
+                encoder = forecaster.proximity_encoders["Location"]
+                loc_val = input_data.get("Location")
+                if loc_val:
+                    st.markdown(f"**Target Location Zone:** {encoder.mapper.get_zone(loc_val)}")
 
-        st.dataframe(
-            res_df.style.format({c: "${:,.0f}" for c in res_df.columns if c != "Component"})
-        )
+            res_data = []
+            for target, preds in results.items():
+                row = {"Component": target}
+                for q_key, val in preds.items():
+                    row[q_key] = val[0]
+                res_data.append(row)
+
+            res_df = pd.DataFrame(res_data)
+            chart_df = res_df.set_index("Component").T
+
+            try:
+                sorted_index = sorted(chart_df.index, key=lambda x: int(x.replace("p", "")))
+                chart_df = chart_df.reindex(sorted_index)
+            except ValueError:
+                pass
+
+            st.line_chart(chart_df)
+
+            st.dataframe(
+                res_df.style.format({c: "${:,.0f}" for c in res_df.columns if c != "Component"})
+            )

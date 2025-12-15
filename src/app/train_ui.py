@@ -6,6 +6,7 @@ import pandas as pd
 import seaborn as sns
 import streamlit as st
 
+from src.app.api_client import APIError, get_api_client
 from src.app.caching import load_data_cached as load_data
 from src.app.config_ui import _reset_workflow_state, render_workflow_wizard
 from src.services.analytics_service import AnalyticsService
@@ -108,8 +109,24 @@ def render_training_ui() -> None:
         return
 
     with st.expander("Data Analysis", expanded=False):
-        analytics_service = AnalyticsService()
-        summary = analytics_service.get_data_summary(df)
+        api_client = get_api_client()
+        use_api = api_client is not None
+
+        if use_api:
+            try:
+                summary_response = api_client.get_data_summary(df)
+                summary = {
+                    "total_samples": summary_response.total_samples,
+                    "shape": summary_response.shape,
+                }
+                for col, count in summary_response.unique_counts.items():
+                    summary[f"unique_{col.lower().replace(' ', '_')}"] = count
+            except APIError as e:
+                st.error(f"Failed to get data summary: {e.message}")
+                summary = {}
+        else:
+            analytics_service = AnalyticsService()
+            summary = analytics_service.get_data_summary(df)
 
         viz_options = [
             "Overview Metrics",
@@ -213,13 +230,16 @@ def render_training_ui() -> None:
     display_charts = st.checkbox("Show Training Performance Chart", value=True)
     additional_tag = st.text_input("Additional Tag (Optional)", placeholder="e.g. experimental-v1")
 
-    training_service = get_training_service()
-    registry = ModelRegistry()
+    api_client = get_api_client()
+    use_api = api_client is not None
 
     if "training_job_id" not in st.session_state:
         st.session_state["training_job_id"] = None
+    if "training_dataset_id" not in st.session_state:
+        st.session_state["training_dataset_id"] = None
 
     job_id = st.session_state["training_job_id"]
+    dataset_id = st.session_state["training_dataset_id"]
 
     if job_id is None:
         if st.button("Start Training (Async)", type="primary"):
@@ -227,7 +247,6 @@ def render_training_ui() -> None:
                 st.error("No data loaded.")
                 return
 
-            # Validate config exists before training
             if not config_valid:
                 st.error(
                     "❌ Configuration is required for training. Please complete the Configuration Wizard first."
@@ -237,17 +256,41 @@ def render_training_ui() -> None:
             dataset_name = st.session_state.get("training_dataset_name", "Unknown Data")
 
             try:
-                job_id = training_service.start_training_async(
-                    df,
-                    config,
-                    remove_outliers=remove_outliers,
-                    do_tune=do_tune,
-                    n_trials=num_trials,
-                    additional_tag=additional_tag if additional_tag.strip() else None,
-                    dataset_name=dataset_name,
-                )
+                if use_api:
+                    if dataset_id is None:
+                        csv_content = df.to_csv(index=False).encode("utf-8")
+                        upload_response = api_client.upload_training_data(
+                            csv_content, f"{dataset_name}.csv", dataset_name
+                        )
+                        dataset_id = upload_response.dataset_id
+                        st.session_state["training_dataset_id"] = dataset_id
+
+                    job_response = api_client.start_training(
+                        dataset_id,
+                        config,
+                        remove_outliers=remove_outliers,
+                        do_tune=do_tune,
+                        n_trials=num_trials if do_tune else None,
+                        additional_tag=additional_tag if additional_tag.strip() else None,
+                        dataset_name=dataset_name,
+                    )
+                    job_id = job_response.job_id
+                else:
+                    training_service = get_training_service()
+                    job_id = training_service.start_training_async(
+                        df,
+                        config,
+                        remove_outliers=remove_outliers,
+                        do_tune=do_tune,
+                        n_trials=num_trials,
+                        additional_tag=additional_tag if additional_tag.strip() else None,
+                        dataset_name=dataset_name,
+                    )
+
                 st.session_state["training_job_id"] = job_id
                 st.rerun()
+            except APIError as e:
+                st.error(f"❌ Failed to start training: {e.message}")
             except ValueError as e:
                 st.error(f"❌ Configuration error: {e}")
                 st.info("Please regenerate your configuration using the Configuration Wizard.")
@@ -255,13 +298,31 @@ def render_training_ui() -> None:
                 st.error(f"❌ Failed to start training: {e}")
 
     else:
-        status = training_service.get_job_status(job_id)
+        if use_api:
+            try:
+                status_response = api_client.get_training_job_status(job_id)
+                status = {
+                    "status": status_response.status,
+                    "logs": status_response.logs or [],
+                    "error": status_response.error,
+                    "run_id": status_response.run_id,
+                    "result": None,
+                    "history": [],
+                }
+            except APIError as e:
+                st.error(f"Failed to get job status: {e.message}")
+                st.session_state["training_job_id"] = None
+                st.rerun()
+                return
+        else:
+            training_service = get_training_service()
+            status = training_service.get_job_status(job_id)
 
-        if status is None:
-            st.error("Job not found. Clearing state.")
-            st.session_state["training_job_id"] = None
-            st.rerun()
-            return
+            if status is None:
+                st.error("Job not found. Clearing state.")
+                st.session_state["training_job_id"] = None
+                st.rerun()
+                return
 
         state = status["status"]
         st.info(f"Training Status: **{state}**")
@@ -274,7 +335,8 @@ def render_training_ui() -> None:
                 st.rerun()
 
         with st.expander("Training Logs", expanded=(state != "COMPLETED")):
-            st.code("\n".join(status["logs"]))
+            logs = status.get("logs", [])
+            st.code("\n".join(logs) if logs else "No logs available yet.")
 
         if state == "COMPLETED":
             st.success("Training Finished Successfully!")
@@ -298,21 +360,26 @@ def render_training_ui() -> None:
                     st.line_chart(res_df.set_index("Model")["Score"])
                 st.dataframe(res_df.style.format({"Score": "{:.4f}"}))
 
-            forecaster = status["result"]
             run_id = status.get("run_id", "N/A")
 
-            st.session_state["forecaster"] = forecaster
-            st.session_state["current_run_id"] = run_id
+            if not use_api:
+                forecaster = status.get("result")
+                if forecaster:
+                    st.session_state["forecaster"] = forecaster
+                    st.session_state["current_run_id"] = run_id
 
             st.info(f"Model logged to MLflow with Run ID: **{run_id}**")
             st.markdown("[Open MLflow UI](http://localhost:5000) to view details.")
 
             if st.button("Start New Training"):
                 st.session_state["training_job_id"] = None
+                st.session_state["training_dataset_id"] = None
                 st.rerun()
 
         elif state == "FAILED":
-            st.error(f"Training Failed: {status.get('error')}")
+            error_msg = status.get("error", "Unknown error")
+            st.error(f"Training Failed: {error_msg}")
             if st.button("Retry"):
                 st.session_state["training_job_id"] = None
+                st.session_state["training_dataset_id"] = None
                 st.rerun()

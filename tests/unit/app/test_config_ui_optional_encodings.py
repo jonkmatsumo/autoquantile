@@ -69,8 +69,9 @@ def test_optional_encodings_shown_for_location_columns(
         mock_col3 = MagicMock()
         mock_st.columns.return_value = (mock_col1, mock_col2, mock_col3)
         mock_st.button.return_value = False
+        mock_st.session_state["workflow_service"] = mock_workflow_service
 
-        result = _render_encoding_phase(mock_workflow_service, sample_encoding_result)
+        result = _render_encoding_phase(None, False, sample_encoding_result)
 
         # Verify that data_editor was called
         assert mock_st.data_editor.called, "data_editor should be called"
@@ -128,8 +129,9 @@ def test_optional_encodings_shown_for_date_columns(mock_workflow_service, sample
         mock_col3 = MagicMock()
         mock_st.columns.return_value = (mock_col1, mock_col2, mock_col3)
         mock_st.button.return_value = False
+        mock_st.session_state["workflow_service"] = mock_workflow_service
 
-        result = _render_encoding_phase(mock_workflow_service, sample_encoding_result)
+        result = _render_encoding_phase(None, False, sample_encoding_result)
 
         # Verify that data_editor was called
         assert mock_st.data_editor.called, "data_editor should be called"
@@ -186,7 +188,8 @@ def test_optional_encodings_not_in_classification_phase():
         mock_st.columns.return_value = (mock_col1, mock_col2, mock_col3)
         mock_st.button.return_value = False
 
-        _render_classification_phase(mock_service, result, df)
+        mock_st.session_state = {"workflow_service": mock_service}
+        _render_classification_phase(None, False, result, df)
 
         # Verify that no optional encoding expanders were created
         expander_calls = [

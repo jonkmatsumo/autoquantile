@@ -8,6 +8,7 @@ import pandas as pd
 import pandas.api.types as pd_types
 import streamlit as st
 
+from src.app.api_client import APIError, get_api_client
 from src.app.caching import load_data_cached
 from src.services.workflow_service import WorkflowService, get_workflow_providers
 from src.utils.csv_validator import validate_csv
@@ -82,23 +83,58 @@ def render_workflow_wizard(df: pd.DataFrame, provider: str = "openai") -> Option
         preset_value = None if selected_preset == "None" else selected_preset.lower()
 
         if st.button("Start AI-Powered Configuration Wizard", type="primary"):
-            service = WorkflowService(provider=provider)
-            st.session_state["workflow_service"] = service
+            api_client = get_api_client()
+            use_api = api_client is not None
+
             try:
-                # Use status container for better progress visibility
                 with st.status("Initializing workflow...", expanded=False) as status:
                     status.update(label="Validating input...", state="running")
-                    result = service.start_workflow(df, preset=preset_value)
+                    if use_api:
+                        start_response = api_client.start_workflow(df, provider, preset_value)
+                        workflow_id = start_response.workflow_id
+                        st.session_state["workflow_id"] = workflow_id
+                        st.session_state["workflow_phase"] = start_response.phase
+                        state_response = api_client.get_workflow_state(workflow_id)
+                        result = {
+                            "status": "success",
+                            "data": state_response.current_result,
+                        }
+                    else:
+                        service = WorkflowService(provider=provider)
+                        st.session_state["workflow_service"] = service
+                        result = service.start_workflow(df, preset=preset_value)
+                        st.session_state["workflow_phase"] = "classification"
                     status.update(label="Workflow initialized", state="complete")
                 st.session_state["workflow_result"] = result
-                st.session_state["workflow_phase"] = "classification"
                 st.rerun()
+            except APIError as e:
+                st.error(f"Failed to start workflow: {e.message}")
             except Exception as e:
                 st.error(f"Failed to start workflow: {e}")
         return None
 
-    service: WorkflowService = st.session_state["workflow_service"]
-    result = st.session_state.get("workflow_result")
+    api_client = get_api_client()
+    use_api = api_client is not None
+
+    if use_api:
+        workflow_id = st.session_state.get("workflow_id")
+        if not workflow_id:
+            st.error("Workflow ID not found. Please restart the workflow.")
+            return None
+        try:
+            state_response = api_client.get_workflow_state(workflow_id)
+            result = {
+                "status": "success" if state_response.state.get("status") != "error" else "error",
+                "data": state_response.current_result,
+                "error": state_response.state.get("error"),
+            }
+            st.session_state["workflow_phase"] = state_response.phase
+        except APIError as e:
+            st.error(f"Failed to get workflow state: {e.message}")
+            return None
+    else:
+        service: WorkflowService = st.session_state.get("workflow_service")
+        result = st.session_state.get("workflow_result")
 
     if result is None:
         return None
@@ -128,11 +164,11 @@ def render_workflow_wizard(df: pd.DataFrame, provider: str = "openai") -> Option
         return None
 
     if st.session_state["workflow_phase"] == "classification":
-        return _render_classification_phase(service, result, df)
+        return _render_classification_phase(api_client, use_api, result, df)
     elif st.session_state["workflow_phase"] == "encoding":
-        return _render_encoding_phase(service, result)
+        return _render_encoding_phase(api_client, use_api, result)
     elif st.session_state["workflow_phase"] == "configuration":
-        return _render_configuration_phase(service, result)
+        return _render_configuration_phase(api_client, use_api, result)
     elif st.session_state["workflow_phase"] == "complete":
         return _render_complete_phase(result)
 
@@ -140,7 +176,10 @@ def render_workflow_wizard(df: pd.DataFrame, provider: str = "openai") -> Option
 
 
 def _render_classification_phase(
-    service: WorkflowService, result: Dict[str, Any], df: pd.DataFrame
+    api_client: Optional[Any],
+    use_api: bool,
+    result: Dict[str, Any],
+    df: pd.DataFrame,
 ) -> Optional[Dict[str, Any]]:
     """Render the column classification review phase. Args: service (WorkflowService): Workflow service. result (Dict[str, Any]): Classification result. df (pd.DataFrame): Data. Returns: Optional[Dict[str, Any]]: Config if confirmed, None otherwise."""
     st.subheader("Step 1: Column Classification")
@@ -148,8 +187,9 @@ def _render_classification_phase(
     data = result.get("data", {})
     
     # Fallback: if data is empty, try to get classification directly from workflow state
-    if not data.get("targets") and not data.get("features") and not data.get("ignore"):
-        if service.workflow and service.workflow.current_state:
+    if not use_api and not data.get("targets") and not data.get("features") and not data.get("ignore"):
+        service: WorkflowService = st.session_state.get("workflow_service")
+        if service and service.workflow and service.workflow.current_state:
             classification = service.workflow.current_state.get("column_classification", {})
             if classification:
                 data = {
@@ -219,9 +259,13 @@ def _render_classification_phase(
         )
 
     # Get column_types from workflow state
-    column_types = (
-        service.workflow.current_state.get("column_types", {}) if service.workflow else {}
-    )
+    if use_api:
+        column_types = result.get("data", {}).get("column_types", {})
+    else:
+        service: WorkflowService = st.session_state.get("workflow_service")
+        column_types = (
+            service.workflow.current_state.get("column_types", {}) if service and service.workflow else {}
+        )
 
     # Build unified editor
     classification_data = []
@@ -286,14 +330,35 @@ def _render_classification_phase(
 
             modifications = {"targets": new_targets, "features": new_features, "ignore": new_ignore}
 
-            progress_msg = _get_progress_message(service)
-            with st.status(progress_msg, expanded=False) as status:
-                status.update(label="Evaluating features...", state="running")
-                result = service.confirm_classification(modifications)
-                status.update(label="Feature encoding complete", state="complete")
-            st.session_state["workflow_result"] = result
-            st.session_state["workflow_phase"] = "encoding"
-            st.rerun()
+            try:
+                if use_api:
+                    workflow_id = st.session_state.get("workflow_id")
+                    if not workflow_id:
+                        st.error("Workflow ID not found")
+                        return None
+                    with st.status("Evaluating features...", expanded=False) as status:
+                        status.update(label="Evaluating features...", state="running")
+                        progress_response = api_client.confirm_classification(workflow_id, modifications)
+                        status.update(label="Feature encoding complete", state="complete")
+                    result = {
+                        "status": "success",
+                        "data": progress_response.current_result,
+                    }
+                    st.session_state["workflow_phase"] = progress_response.phase
+                else:
+                    service: WorkflowService = st.session_state.get("workflow_service")
+                    progress_msg = _get_progress_message(service)
+                    with st.status(progress_msg, expanded=False) as status:
+                        status.update(label="Evaluating features...", state="running")
+                        result = service.confirm_classification(modifications)
+                        status.update(label="Feature encoding complete", state="complete")
+                    st.session_state["workflow_phase"] = "encoding"
+                st.session_state["workflow_result"] = result
+                st.rerun()
+            except APIError as e:
+                st.error(f"Failed to confirm classification: {e.message}")
+            except Exception as e:
+                st.error(f"Failed to confirm classification: {e}")
 
     with col2:
         if st.button("Reset Workflow"):
@@ -304,7 +369,9 @@ def _render_classification_phase(
 
 
 def _render_encoding_phase(
-    service: WorkflowService, result: Dict[str, Any]
+    api_client: Optional[Any],
+    use_api: bool,
+    result: Dict[str, Any],
 ) -> Optional[Dict[str, Any]]:
     """Render the feature encoding review phase. Args: service (WorkflowService): Workflow service. result (Dict[str, Any]): Encoding result. Returns: Optional[Dict[str, Any]]: Config if confirmed, None otherwise."""
     st.subheader("Step 2: Feature Encoding")
@@ -318,12 +385,17 @@ def _render_encoding_phase(
             st.markdown(summary)
 
     # Get column types and current optional encodings
-    current_optional_encodings = (
-        service.workflow.current_state.get("optional_encodings", {}) if service.workflow else {}
-    )
-    column_types = (
-        service.workflow.current_state.get("column_types", {}) if service.workflow else {}
-    )
+    if use_api:
+        current_optional_encodings = result.get("data", {}).get("optional_encodings", {})
+        column_types = result.get("data", {}).get("column_types", {})
+    else:
+        service: WorkflowService = st.session_state.get("workflow_service")
+        current_optional_encodings = (
+            service.workflow.current_state.get("optional_encodings", {}) if service and service.workflow else {}
+        )
+        column_types = (
+            service.workflow.current_state.get("column_types", {}) if service and service.workflow else {}
+        )
 
     # Get date columns - check if we have access to original dataframe
     date_cols = []
@@ -553,14 +625,35 @@ def _render_encoding_phase(
                 "optional_encodings": optional_encodings_ui,
             }
 
-            progress_msg = _get_progress_message(service)
-            with st.status(progress_msg, expanded=False) as status:
-                status.update(label="Configuring model...", state="running")
-                result = service.confirm_encoding(modifications)
-                status.update(label="Model configuration complete", state="complete")
-            st.session_state["workflow_result"] = result
-            st.session_state["workflow_phase"] = "configuration"
-            st.rerun()
+            try:
+                if use_api:
+                    workflow_id = st.session_state.get("workflow_id")
+                    if not workflow_id:
+                        st.error("Workflow ID not found")
+                        return None
+                    with st.status("Configuring model...", expanded=False) as status:
+                        status.update(label="Configuring model...", state="running")
+                        progress_response = api_client.confirm_encoding(workflow_id, modifications)
+                        status.update(label="Model configuration complete", state="complete")
+                    result = {
+                        "status": "success",
+                        "data": progress_response.current_result,
+                    }
+                    st.session_state["workflow_phase"] = progress_response.phase
+                else:
+                    service: WorkflowService = st.session_state.get("workflow_service")
+                    progress_msg = _get_progress_message(service)
+                    with st.status(progress_msg, expanded=False) as status:
+                        status.update(label="Configuring model...", state="running")
+                        result = service.confirm_encoding(modifications)
+                        status.update(label="Model configuration complete", state="complete")
+                    st.session_state["workflow_phase"] = "configuration"
+                st.session_state["workflow_result"] = result
+                st.rerun()
+            except APIError as e:
+                st.error(f"Failed to confirm encoding: {e.message}")
+            except Exception as e:
+                st.error(f"Failed to confirm encoding: {e}")
 
     with col2:
         if st.button("Back to Classification", key="back_to_class"):
@@ -571,7 +664,9 @@ def _render_encoding_phase(
 
 
 def _render_configuration_phase(
-    service: WorkflowService, result: Dict[str, Any]
+    api_client: Optional[Any],
+    use_api: bool,
+    result: Dict[str, Any],
 ) -> Optional[Dict[str, Any]]:
     """Render the model configuration review phase. Args: service (WorkflowService): Workflow service. result (Dict[str, Any]): Configuration result. Returns: Optional[Dict[str, Any]]: Config if finalized, None otherwise."""
     st.subheader("Step 3: Model Configuration")
@@ -640,17 +735,25 @@ def _render_configuration_phase(
     )
 
     # Location Settings (if location columns exist)
-    location_columns = (
-        service.workflow.current_state.get("location_columns", []) if service.workflow else []
-    )
+    if use_api:
+        location_columns = result.get("data", {}).get("location_columns", [])
+    else:
+        service: WorkflowService = st.session_state.get("workflow_service")
+        location_columns = (
+            service.workflow.current_state.get("location_columns", []) if service and service.workflow else []
+        )
     if location_columns:
         st.markdown("**Location Proximity Settings:**")
         st.info(f"Detected location columns: {', '.join(location_columns)}")
 
         # Get current location settings from state or default
-        current_location_settings = (
-            service.workflow.current_state.get("location_settings", {}) if service.workflow else {}
-        )
+        if use_api:
+            current_location_settings = result.get("data", {}).get("location_settings", {})
+        else:
+            service: WorkflowService = st.session_state.get("workflow_service")
+            current_location_settings = (
+                service.workflow.current_state.get("location_settings", {}) if service and service.workflow else {}
+            )
         current_max_dist = current_location_settings.get("max_distance_km", 50)
         current_max_dist = int(current_max_dist) if current_max_dist else 50
 
@@ -730,46 +833,91 @@ def _render_configuration_phase(
 
             final_quantiles = [float(row["Quantile"]) for _, row in edited_quant_df.iterrows()]
 
-            # Get the final config from service and update with user edits
-            final_config = service.get_final_config()
+            try:
+                if use_api:
+                    workflow_id = st.session_state.get("workflow_id")
+                    if not workflow_id:
+                        st.error("Workflow ID not found")
+                        return None
 
-            if final_config:
-                final_config["model"]["features"] = final_features
-                final_config["model"]["quantiles"] = final_quantiles
-                final_config["model"]["hyperparameters"] = {
-                    "training": {
-                        "objective": "reg:quantileerror",
-                        "tree_method": "hist",
-                        "max_depth": int(max_depth),
-                        "eta": float(eta),
-                        "subsample": float(subsample),
-                        "colsample_bytree": float(colsample),
-                        "verbosity": 0,
-                    },
-                    "cv": {
-                        "num_boost_round": int(num_boost),
-                        "nfold": int(nfold),
-                        "early_stopping_rounds": int(early_stop),
-                        "verbose_eval": False,
-                    },
-                }
+                    config_updates = {
+                        "features": final_features,
+                        "quantiles": final_quantiles,
+                        "hyperparameters": {
+                            "training": {
+                                "objective": "reg:quantileerror",
+                                "tree_method": "hist",
+                                "max_depth": int(max_depth),
+                                "eta": float(eta),
+                                "subsample": float(subsample),
+                                "colsample_bytree": float(colsample),
+                                "verbosity": 0,
+                            },
+                            "cv": {
+                                "num_boost_round": int(num_boost),
+                                "nfold": int(nfold),
+                                "early_stopping_rounds": int(early_stop),
+                                "verbose_eval": False,
+                            },
+                        },
+                    }
 
-                # Update location settings if location columns exist
-                if location_columns and "workflow_location_settings" in st.session_state:
-                    final_config["location_settings"] = st.session_state[
-                        "workflow_location_settings"
-                    ]
-                    # Also update workflow state
-                    if service.workflow:
-                        service.workflow.current_state["location_settings"] = st.session_state[
+                    if location_columns and "workflow_location_settings" in st.session_state:
+                        config_updates["location_settings"] = st.session_state[
                             "workflow_location_settings"
                         ]
 
-                st.session_state["workflow_result"]["final_config"] = final_config
-                st.session_state["workflow_phase"] = "complete"
-                st.rerun()
-            else:
-                st.error("Could not retrieve final configuration")
+                    complete_response = api_client.finalize_configuration(workflow_id, config_updates)
+                    final_config = complete_response.config
+                    st.session_state["workflow_result"] = {
+                        "status": "success",
+                        "final_config": final_config,
+                    }
+                    st.session_state["workflow_phase"] = "complete"
+                    st.rerun()
+                else:
+                    service: WorkflowService = st.session_state.get("workflow_service")
+                    final_config = service.get_final_config()
+
+                    if final_config:
+                        final_config["model"]["features"] = final_features
+                        final_config["model"]["quantiles"] = final_quantiles
+                        final_config["model"]["hyperparameters"] = {
+                            "training": {
+                                "objective": "reg:quantileerror",
+                                "tree_method": "hist",
+                                "max_depth": int(max_depth),
+                                "eta": float(eta),
+                                "subsample": float(subsample),
+                                "colsample_bytree": float(colsample),
+                                "verbosity": 0,
+                            },
+                            "cv": {
+                                "num_boost_round": int(num_boost),
+                                "nfold": int(nfold),
+                                "early_stopping_rounds": int(early_stop),
+                                "verbose_eval": False,
+                            },
+                        }
+
+                        if location_columns and "workflow_location_settings" in st.session_state:
+                            final_config["location_settings"] = st.session_state[
+                                "workflow_location_settings"
+                            ]
+                            if service and service.workflow:
+                                service.workflow.current_state["location_settings"] = st.session_state[
+                                    "workflow_location_settings"
+                                ]
+
+                        st.session_state["workflow_result"]["final_config"] = final_config
+                        st.session_state["workflow_phase"] = "complete"
+                        st.rerun()
+                    else:
+                        st.error("Could not retrieve final configuration")
+            except APIError as e:
+                st.error(f"Failed to finalize configuration: {e.message}")
+            except Exception as e:
+                st.error(f"Failed to finalize configuration: {e}")
 
     with col2:
         if st.button("Back to Encoding", key="back_to_encoding"):

@@ -486,8 +486,9 @@ def test_render_classification_phase(mock_service_class):
         mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
         mock_st.button.return_value = False
         mock_st.rerun = MagicMock()
+        mock_st.session_state = {"workflow_service": mock_service}
 
-        _render_classification_phase(mock_service, result, df)
+        _render_classification_phase(None, False, result, df)
 
         mock_st.subheader.assert_called_with("Step 1: Column Classification")
 
@@ -535,7 +536,8 @@ def test_render_classification_phase_fallback(mock_service_class):
         mock_st.button.return_value = False
         mock_st.rerun = MagicMock()
 
-        _render_classification_phase(mock_service, result, df)
+        with patch("src.app.config_ui.st.session_state", {"workflow_service": mock_service}):
+            _render_classification_phase(None, False, result, df)
 
         mock_st.subheader.assert_called_with("Step 1: Column Classification")
         # Verify that the data editor was called (classification data should be populated from fallback)
@@ -573,8 +575,9 @@ def test_render_encoding_phase(mock_service_class):
         mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
         mock_st.button.return_value = False
         mock_st.rerun = MagicMock()
+        mock_st.session_state = {"workflow_service": mock_service}
 
-        _render_encoding_phase(mock_service, result)
+        _render_encoding_phase(None, False, result)
 
         mock_st.subheader.assert_called_with("Step 2: Feature Encoding")
 
@@ -614,8 +617,9 @@ def test_render_configuration_phase(mock_service_class):
         mock_st.number_input.side_effect = [6, 0.1, 0.8, 0.8, 200, 5, 20]
         mock_st.button.return_value = False
         mock_st.rerun = MagicMock()
+        mock_st.session_state = {"workflow_service": mock_service}
 
-        _render_configuration_phase(mock_service, result)
+        _render_configuration_phase(None, False, result)
 
         mock_st.subheader.assert_called_with("Step 3: Model Configuration")
 
@@ -746,7 +750,8 @@ def test_render_classification_phase_confirmation():
         mock_st.spinner.return_value.__enter__ = MagicMock()
         mock_st.spinner.return_value.__exit__ = MagicMock()
 
-        _render_classification_phase(mock_service, result, df)
+        mock_st.session_state["workflow_service"] = mock_service
+        _render_classification_phase(None, False, result, df)
 
         # Should call confirm_classification
         mock_service.confirm_classification.assert_called_once()
@@ -789,11 +794,11 @@ def test_render_encoding_phase_confirmation():
         mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
         mock_st.button.side_effect = lambda label, **kwargs: label == "Confirm & Continue"
         mock_st.rerun = MagicMock()
-        mock_st.session_state = {}
+        mock_st.session_state = {"workflow_service": mock_service}
         mock_st.spinner.return_value.__enter__ = MagicMock()
         mock_st.spinner.return_value.__exit__ = MagicMock()
 
-        _render_encoding_phase(mock_service, result)
+        _render_encoding_phase(None, False, result)
 
         mock_service.confirm_encoding.assert_called_once()
         assert mock_st.session_state["workflow_phase"] == "configuration"
@@ -838,8 +843,9 @@ def test_render_configuration_phase_confirmation():
         # Mock service.workflow to avoid AttributeError
         mock_service.workflow = MagicMock()
         mock_service.workflow.current_state = {"location_columns": []}
+        mock_st.session_state["workflow_service"] = mock_service
 
-        config = _render_configuration_phase(mock_service, result)
+        config = _render_configuration_phase(None, False, result)
 
         # Should get final config when button is clicked
         mock_service.get_final_config.assert_called_once()
