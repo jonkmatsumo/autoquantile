@@ -66,12 +66,15 @@ def create_app() -> FastAPI:
         return {"status": "healthy"}
 
     from src.api.routers import analytics, inference, models, training, workflow
+    from src.api.mcp.server import register_mcp_tools
 
     app.include_router(models.router)
     app.include_router(inference.router)
     app.include_router(training.router)
     app.include_router(workflow.router)
     app.include_router(analytics.router)
+
+    register_mcp_tools(app)
 
     return app
 
