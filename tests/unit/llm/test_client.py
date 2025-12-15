@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from openai import APIError, RateLimitError
 
 from src.llm.client import (
     DebugClient,
@@ -336,3 +337,208 @@ def test_validate_provider_import_error(mock_get_llm):
     result = validate_provider("openai")
 
     assert result is False
+
+
+@patch("src.llm.client.get_env_var")
+@patch("src.llm.client.OpenAI")
+def test_openai_client_init_with_provided_key(mock_openai, mock_get_env):
+    """Test OpenAIClient initialization with provided API key."""
+    client = OpenAIClient(api_key="provided-key")
+    assert client.api_key == "provided-key"
+    assert client.model == "gpt-4-turbo-preview"
+    mock_get_env.assert_not_called()
+
+
+@patch("src.llm.client.get_env_var")
+def test_openai_client_init_missing_key_raises_error(mock_get_env):
+    """Test OpenAIClient initialization raises ValueError when API key not found."""
+    mock_get_env.return_value = None
+    with pytest.raises(ValueError, match="OPENAI_API_KEY not found"):
+        OpenAIClient()
+
+
+@patch("src.llm.client.get_env_var")
+@patch("src.llm.client.OpenAI")
+def test_openai_client_init_with_model(mock_openai, mock_get_env):
+    """Test OpenAIClient initialization with custom model."""
+    mock_get_env.return_value = "fake-key"
+    client = OpenAIClient(model="gpt-4")
+    assert client.model == "gpt-4"
+
+
+@patch("src.llm.client.get_env_var")
+@patch("src.llm.client.OpenAI")
+@patch("src.llm.client.time.sleep")
+def test_openai_client_retry_on_rate_limit_error(mock_sleep, mock_openai, mock_get_env):
+    """Test OpenAIClient retries on RateLimitError."""
+    mock_get_env.return_value = "fake-key"
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = "Success"
+    
+    rate_limit_error = RateLimitError(message="Rate limit exceeded", response=MagicMock(), body=None)
+    mock_client.chat.completions.create.side_effect = [
+        rate_limit_error,
+        mock_response,
+    ]
+    
+    client = OpenAIClient()
+    response = client.generate("test")
+    
+    assert response == "Success"
+    assert mock_client.chat.completions.create.call_count == 2
+    mock_sleep.assert_called_once()
+
+
+@patch("src.llm.client.get_env_var")
+@patch("src.llm.client.OpenAI")
+@patch("src.llm.client.time.sleep")
+def test_openai_client_retry_on_api_error(mock_sleep, mock_openai, mock_get_env):
+    """Test OpenAIClient retries on APIError."""
+    mock_get_env.return_value = "fake-key"
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = "Success"
+    
+    api_error = APIError(message="API error", request=MagicMock(), body=None)
+    mock_client.chat.completions.create.side_effect = [
+        api_error,
+        mock_response,
+    ]
+    
+    client = OpenAIClient()
+    response = client.generate("test")
+    
+    assert response == "Success"
+    assert mock_client.chat.completions.create.call_count == 2
+
+
+@patch("src.llm.client.get_env_var")
+@patch("src.llm.client.OpenAI")
+@patch("src.llm.client.time.sleep")
+def test_openai_client_max_retries_exceeded(mock_sleep, mock_openai, mock_get_env):
+    """Test OpenAIClient raises exception after max retries."""
+    mock_get_env.return_value = "fake-key"
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    
+    rate_limit_error = RateLimitError(message="Rate limit exceeded", response=MagicMock(), body=None)
+    mock_client.chat.completions.create.side_effect = rate_limit_error
+    
+    client = OpenAIClient()
+    with pytest.raises(RateLimitError):
+        client.generate("test")
+    
+    assert mock_client.chat.completions.create.call_count == 3
+
+
+@patch("src.llm.client.get_env_var")
+@patch("src.llm.client.OpenAI")
+def test_openai_client_empty_content_raises_error(mock_openai, mock_get_env):
+    """Test OpenAIClient raises ValueError when response content is None."""
+    mock_get_env.return_value = "fake-key"
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = None
+    mock_client.chat.completions.create.return_value = mock_response
+    
+    client = OpenAIClient()
+    with pytest.raises(ValueError, match="OpenAI returned empty response content"):
+        client.generate("test")
+
+
+@patch("src.llm.client.get_env_var")
+@patch("src.llm.client.OpenAI")
+def test_openai_client_non_retryable_exception_propagates(mock_openai, mock_get_env):
+    """Test OpenAIClient propagates non-retryable exceptions immediately."""
+    mock_get_env.return_value = "fake-key"
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    
+    mock_client.chat.completions.create.side_effect = ValueError("Non-retryable error")
+    
+    client = OpenAIClient()
+    with pytest.raises(ValueError, match="Non-retryable error"):
+        client.generate("test")
+    
+    assert mock_client.chat.completions.create.call_count == 1
+
+
+@patch("src.llm.client.get_env_var")
+@patch("src.llm.client.OpenAI")
+def test_openai_client_generate_with_system_prompt(mock_openai, mock_get_env):
+    """Test OpenAIClient.generate includes system prompt in messages."""
+    mock_get_env.return_value = "fake-key"
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = "Response"
+    mock_client.chat.completions.create.return_value = mock_response
+    
+    client = OpenAIClient()
+    client.generate("User prompt", system_prompt="System prompt")
+    
+    call_args = mock_client.chat.completions.create.call_args
+    messages = call_args[1]["messages"]
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"] == "System prompt"
+    assert messages[1]["role"] == "user"
+    assert messages[1]["content"] == "User prompt"
+
+
+@patch("src.llm.client.AsyncOpenAI")
+@patch("src.llm.client.get_env_var")
+@patch("src.llm.client.OpenAI")
+@patch("src.llm.client.asyncio.sleep")
+def test_openai_client_agenerate_success(mock_asleep, mock_openai, mock_get_env, mock_async_openai):
+    """Test OpenAIClient.agenerate successful async generation."""
+    import asyncio
+    
+    mock_get_env.return_value = "fake-key"
+    mock_openai.return_value = MagicMock()
+    
+    mock_async_client = MagicMock()
+    mock_async_openai.return_value = mock_async_client
+    
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = "Async Response"
+    
+    async def mock_create(*args, **kwargs):
+        return mock_response
+    
+    mock_async_client.chat.completions.create = mock_create
+    
+    client = OpenAIClient()
+    
+    async def run_test():
+        response = await client.agenerate("test")
+        assert response == "Async Response"
+    
+    asyncio.run(run_test())
+
+
+@patch("src.llm.client.get_env_var")
+@patch("src.llm.client.genai")
+def test_gemini_client_init_with_provided_key(mock_genai, mock_get_env):
+    """Test GeminiClient initialization with provided API key."""
+    mock_model = MagicMock()
+    mock_genai.GenerativeModel.return_value = mock_model
+    client = GeminiClient(api_key="provided-key")
+    assert client.api_key == "provided-key"
+    mock_get_env.assert_not_called()
+    mock_genai.configure.assert_called_once_with(api_key="provided-key")
+
+
+@patch("src.llm.client.get_env_var")
+def test_gemini_client_init_missing_key_raises_error(mock_get_env):
+    """Test GeminiClient initialization raises ValueError when API key not found."""
+    mock_get_env.return_value = None
+    with pytest.raises(ValueError, match="GEMINI_API_KEY not found"):
+        GeminiClient()

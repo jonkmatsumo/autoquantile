@@ -126,3 +126,98 @@ def test_empty_importance(mock_streamlit, mock_registry, mock_analytics):
 
     mock_streamlit.warning.assert_called()
     assert "No feature importance scores found" in mock_streamlit.warning.call_args_list[-1][0][0]
+
+
+def test_fmt_score_value_error(mock_streamlit, mock_registry):
+    """Test fmt_score handles ValueError (non-numeric CV score)."""
+    run_data = {
+        "run_id": "run123",
+        "start_time": datetime(2023, 1, 1, 12, 0),
+        "metrics.cv_mean_score": "invalid",
+    }
+    mock_registry.list_models.return_value = [run_data]
+    
+    mock_streamlit.selectbox.return_value = None
+    
+    render_model_analysis_ui()
+    
+    expected_label_part = "CV:invalid"
+    assert mock_streamlit.selectbox.called
+
+
+def test_fmt_score_type_error(mock_streamlit, mock_registry):
+    """Test fmt_score handles TypeError (None CV score)."""
+    run_data = {
+        "run_id": "run123",
+        "start_time": datetime(2023, 1, 1, 12, 0),
+        "metrics.cv_mean_score": None,
+    }
+    mock_registry.list_models.return_value = [run_data]
+    
+    mock_streamlit.selectbox.return_value = None
+    
+    render_model_analysis_ui()
+    
+    expected_label_part = "CV:None"
+    assert mock_streamlit.selectbox.called
+
+
+def test_empty_selected_label_returns_early(mock_streamlit, mock_registry):
+    """Test that function returns early when selected_label is None."""
+    run_data = {
+        "run_id": "run123",
+        "start_time": datetime(2023, 1, 1, 12, 0),
+        "metrics.cv_mean_score": 0.99,
+    }
+    mock_registry.list_models.return_value = [run_data]
+    
+    mock_streamlit.selectbox.return_value = None
+    
+    render_model_analysis_ui()
+    
+    mock_registry.load_model.assert_not_called()
+
+
+def test_no_targets_shows_error(mock_streamlit, mock_registry, mock_analytics):
+    """Test that function shows error and returns when no targets found."""
+    run_data = {
+        "run_id": "run123",
+        "start_time": datetime(2023, 1, 1, 12, 0),
+        "metrics.cv_mean_score": 0.99,
+    }
+    mock_registry.list_models.return_value = [run_data]
+    
+    expected_label = f"2023-01-01 12:00 | CV:0.9900 | ID:run123"
+    mock_streamlit.selectbox.return_value = expected_label
+    
+    mock_forecaster = MagicMock()
+    mock_registry.load_model.return_value = mock_forecaster
+    mock_analytics.get_available_targets.return_value = []
+    
+    render_model_analysis_ui()
+    
+    mock_streamlit.error.assert_called_with(
+        "This model file does not appear to contain trained models."
+    )
+    mock_analytics.get_available_quantiles.assert_not_called()
+
+
+def test_exception_handling_displays_traceback(mock_streamlit, mock_registry):
+    """Test that exceptions are caught and traceback is displayed."""
+    run_data = {
+        "run_id": "run123",
+        "start_time": datetime(2023, 1, 1, 12, 0),
+        "metrics.cv_mean_score": 0.99,
+    }
+    mock_registry.list_models.return_value = [run_data]
+    
+    expected_label = f"2023-01-01 12:00 | CV:0.9900 | ID:run123"
+    mock_streamlit.selectbox.return_value = expected_label
+    
+    mock_registry.load_model.side_effect = ValueError("Test error")
+    
+    render_model_analysis_ui()
+    
+    mock_streamlit.code.assert_called()
+    call_args = mock_streamlit.code.call_args[0][0]
+    assert "ValueError" in call_args or "Test error" in call_args
