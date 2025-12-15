@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from src.app.inference_ui import render_inference_ui, render_model_information
+from src.services.inference_service import ModelSchema
 
 
 @pytest.fixture
@@ -56,14 +57,22 @@ def mock_forecaster():
 
 @pytest.fixture
 def mock_analytics_service():
-    with patch("src.app.inference_ui.AnalyticsService") as MockAn:
+    with patch("src.app.inference_ui.get_analytics_service") as mock_get_analytics:
         mock_instance = MagicMock()
         mock_instance.get_available_targets.return_value = ["BaseSalary", "TotalComp"]
         mock_instance.get_available_quantiles.return_value = [0.1, 0.5, 0.9]
         mock_instance.get_feature_importance.return_value = pd.DataFrame(
             {"Feature": ["Level", "Location", "YearsOfExperience"], "Gain": [10.0, 8.0, 5.0]}
         )
-        MockAn.return_value = mock_instance
+        mock_get_analytics.return_value = mock_instance
+        yield mock_instance
+
+
+@pytest.fixture
+def mock_inference_service():
+    with patch("src.app.inference_ui.get_inference_service") as mock_get_inference:
+        mock_instance = MagicMock()
+        mock_get_inference.return_value = mock_instance
         yield mock_instance
 
 
@@ -79,13 +88,24 @@ def test_model_information_display(mock_streamlit, mock_registry, mock_forecaste
         }
     ]
 
+    # Create mock schema
+    mock_schema = MagicMock(spec=ModelSchema)
+    mock_schema.ranked_features = ["Level"]
+    mock_schema.proximity_features = ["Location"]
+    mock_schema.numerical_features = ["YearsOfExperience"]
+    mock_schema.all_feature_names = ["Level", "Location", "YearsOfExperience"]
+
     # Mock expander
     mock_expander = MagicMock()
     mock_expander.__enter__.return_value = MagicMock()
     mock_expander.__exit__.return_value = None
     mock_streamlit.expander.return_value = mock_expander
 
-    render_model_information(mock_forecaster, "test_run_123", runs)
+    mock_col1 = MagicMock()
+    mock_col2 = MagicMock()
+    mock_streamlit.columns.return_value = [mock_col1, mock_col2]
+
+    render_model_information(mock_forecaster, mock_schema, "test_run_123", runs)
 
     # Should call expander for Model Metadata and Feature Information
     expander_calls = [call[0][0] for call in mock_streamlit.expander.call_args_list]
@@ -94,10 +114,26 @@ def test_model_information_display(mock_streamlit, mock_registry, mock_forecaste
 
 
 def test_model_analysis_section(
-    mock_streamlit, mock_registry, mock_forecaster, mock_analytics_service
+    mock_streamlit, mock_registry, mock_forecaster, mock_analytics_service, mock_inference_service
 ):
     """Test that Model Analysis section appears in Inference tab."""
-    mock_streamlit.session_state = {"forecaster": mock_forecaster, "current_run_id": "test_run_123"}
+    # Create mock schema
+    mock_schema = MagicMock(spec=ModelSchema)
+    mock_schema.ranked_features = ["Level"]
+    mock_schema.proximity_features = ["Location"]
+    mock_schema.numerical_features = ["YearsOfExperience"]
+    mock_schema.all_feature_names = ["Level", "Location", "YearsOfExperience"]
+    mock_schema.targets = ["BaseSalary", "TotalComp"]
+    mock_schema.quantiles = [0.1, 0.5, 0.9]
+
+    mock_inference_service.load_model.return_value = mock_forecaster
+    mock_inference_service.get_model_schema.return_value = mock_schema
+
+    mock_streamlit.session_state = {
+        "forecaster": mock_forecaster,
+        "forecaster_schema": mock_schema,
+        "current_run_id": "test_run_123"
+    }
 
     # Mock registry
     runs = [
@@ -153,16 +189,31 @@ def test_model_analysis_section(
     expander_calls = [call[0][0] for call in mock_streamlit.expander.call_args_list]
     assert "Model Analysis" in expander_calls, "Model Analysis expander should be called"
 
-    # Should call AnalyticsService methods
-    mock_analytics_service.get_available_targets.assert_called()
-    mock_analytics_service.get_available_quantiles.assert_called()
+    # Should call AnalyticsService methods (via get_feature_importance)
+    mock_analytics_service.get_feature_importance.assert_called()
 
 
 def test_model_analysis_feature_importance(
-    mock_streamlit, mock_registry, mock_forecaster, mock_analytics_service
+    mock_streamlit, mock_registry, mock_forecaster, mock_analytics_service, mock_inference_service
 ):
     """Test feature importance visualization in Model Analysis."""
-    mock_streamlit.session_state = {"forecaster": mock_forecaster, "current_run_id": "test_run_123"}
+    # Create mock schema
+    mock_schema = MagicMock(spec=ModelSchema)
+    mock_schema.ranked_features = ["Level"]
+    mock_schema.proximity_features = ["Location"]
+    mock_schema.numerical_features = ["YearsOfExperience"]
+    mock_schema.all_feature_names = ["Level", "Location", "YearsOfExperience"]
+    mock_schema.targets = ["BaseSalary", "TotalComp"]
+    mock_schema.quantiles = [0.1, 0.5, 0.9]
+
+    mock_inference_service.load_model.return_value = mock_forecaster
+    mock_inference_service.get_model_schema.return_value = mock_schema
+
+    mock_streamlit.session_state = {
+        "forecaster": mock_forecaster,
+        "forecaster_schema": mock_schema,
+        "current_run_id": "test_run_123"
+    }
 
     runs = [
         {

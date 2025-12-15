@@ -6,7 +6,8 @@ import seaborn as sns
 import streamlit as st
 
 from src.app.api_client import APIError, get_api_client
-from src.services.analytics_service import AnalyticsService
+from src.app.service_factories import get_analytics_service, get_inference_service
+from src.services.inference_service import InvalidInputError, ModelNotFoundError
 from src.services.model_registry import ModelRegistry
 
 
@@ -66,8 +67,10 @@ def render_model_information_api(model_details: Any, run_id: str, runs: List[Dic
             st.markdown(f"**Total Features:** {total_features}")
 
 
-def render_model_information(forecaster: Any, run_id: str, runs: List[Dict[str, Any]]) -> None:
-    """Display model metadata and feature information. Args: forecaster (Any): Loaded forecaster model. run_id (str): MLflow run ID. runs (List[Dict[str, Any]]): List of all runs from registry. Returns: None."""
+def render_model_information(
+    model: Any, schema: Any, run_id: str, runs: List[Dict[str, Any]]
+) -> None:
+    """Display model metadata and feature information. Args: model (Any): Loaded forecaster model. schema (Any): Model schema from InferenceService. run_id (str): MLflow run ID. runs (List[Dict[str, Any]]): List of all runs from registry. Returns: None."""
     st.markdown("---")
     st.subheader("Model Information")
 
@@ -105,32 +108,25 @@ def render_model_information(forecaster: Any, run_id: str, runs: List[Dict[str, 
             st.info("Metadata not available")
 
     with st.expander("Feature Information", expanded=False):
-        if forecaster.ranked_encoders:
+        if schema.ranked_features:
             st.markdown("**Ranked Features:**")
-            for col_name, encoder in forecaster.ranked_encoders.items():
+            for col_name in schema.ranked_features:
+                encoder = model.ranked_encoders[col_name]
                 levels = list(encoder.mapping.keys())
                 st.markdown(
                     f"- **{col_name}**: {len(levels)} levels - {', '.join(levels[:5])}{'...' if len(levels) > 5 else ''}"
                 )
 
-        if forecaster.proximity_encoders:
+        if schema.proximity_features:
             st.markdown("**Proximity Features:**")
-            for col_name, encoder in forecaster.proximity_encoders.items():
+            for col_name in schema.proximity_features:
                 st.markdown(f"- **{col_name}**: Proximity-based encoding")
 
-        handled = list(forecaster.ranked_encoders.keys()) + list(
-            forecaster.proximity_encoders.keys()
-        )
-        remaining = [
-            f
-            for f in forecaster.feature_names
-            if f not in handled and f not in [f"{h}_Enc" for h in handled]
-        ]
-        if remaining:
+        if schema.numerical_features:
             st.markdown("**Numerical Features:**")
-            st.markdown(f"- {', '.join(remaining[:10])}{'...' if len(remaining) > 10 else ''}")
+            st.markdown(f"- {', '.join(schema.numerical_features[:10])}{'...' if len(schema.numerical_features) > 10 else ''}")
 
-        st.markdown(f"**Total Features:** {len(forecaster.feature_names)}")
+        st.markdown(f"**Total Features:** {len(schema.all_feature_names)}")
 
 
 def render_inference_ui() -> None:
@@ -212,17 +208,24 @@ def render_inference_ui() -> None:
         model_details = st.session_state["model_details"]
         render_model_information_api(model_details, run_id, runs)
     else:
+        inference_service = get_inference_service()
         if "forecaster" not in st.session_state or st.session_state.get("current_run_id") != run_id:
             with st.spinner(f"Loading model from MLflow run {run_id}..."):
                 try:
-                    registry = ModelRegistry()
-                    st.session_state["forecaster"] = registry.load_model(run_id)
+                    model = inference_service.load_model(run_id)
+                    schema = inference_service.get_model_schema(model)
+                    st.session_state["forecaster"] = model
+                    st.session_state["forecaster_schema"] = schema
                     st.session_state["current_run_id"] = run_id
+                except ModelNotFoundError as e:
+                    st.error(f"Failed to load model: {e}")
+                    return
                 except Exception as e:
                     st.error(f"Failed to load model: {e}")
                     return
         forecaster = st.session_state["forecaster"]
-        render_model_information(forecaster, run_id, runs)
+        schema = st.session_state["forecaster_schema"]
+        render_model_information(forecaster, schema, run_id, runs)
 
     with st.expander("Model Analysis", expanded=False):
         if use_api:
@@ -294,8 +297,9 @@ def render_inference_ui() -> None:
                             st.warning(f"No quantiles available for target {selected_target}.")
         else:
             forecaster = st.session_state["forecaster"]
-            analytics_service = AnalyticsService()
-            targets = analytics_service.get_available_targets(forecaster)
+            schema = st.session_state["forecaster_schema"]
+            analytics_service = get_analytics_service()
+            targets = schema.targets
 
             if not targets:
                 st.warning("No targets available in this model.")
@@ -313,9 +317,7 @@ def render_inference_ui() -> None:
                     )
 
                     if selected_target:
-                        quantiles = analytics_service.get_available_quantiles(
-                            forecaster, selected_target
-                        )
+                        quantiles = schema.quantiles
                         if quantiles:
                             selected_q_val = st.selectbox(
                                 "Select Quantile",
@@ -423,7 +425,9 @@ def render_inference_ui() -> None:
                 res_df.style.format({c: "${:,.0f}" for c in res_df.columns if c != "Component"})
             )
     else:
+        inference_service = get_inference_service()
         forecaster = st.session_state["forecaster"]
+        schema = st.session_state["forecaster_schema"]
         with st.form("inference_form"):
             st.subheader("Input Features")
             c1, c2 = st.columns(2)
@@ -431,50 +435,46 @@ def render_inference_ui() -> None:
             input_data = {}
 
             with c1:
-                for col_name, encoder in forecaster.ranked_encoders.items():
+                for col_name in schema.ranked_features:
+                    encoder = forecaster.ranked_encoders[col_name]
                     levels = list(encoder.mapping.keys())
                     val = st.selectbox(col_name, levels, key=f"input_{col_name}")
                     input_data[col_name] = val
 
-                for col_name, encoder in forecaster.proximity_encoders.items():
+                for col_name in schema.proximity_features:
                     val = st.text_input(col_name, "New York", key=f"input_{col_name}")
                     input_data[col_name] = val
 
             with c2:
-                handled = list(forecaster.ranked_encoders.keys()) + list(
-                    forecaster.proximity_encoders.keys()
-                )
-                remaining = [
-                    f
-                    for f in forecaster.feature_names
-                    if f not in handled and f not in [f"{h}_Enc" for h in handled]
-                ]
-
-                for feat in remaining:
+                for feat in schema.numerical_features:
                     val = st.number_input(feat, 0, 100, 5, key=f"input_{feat}")
                     input_data[feat] = val
 
             submitted = st.form_submit_button("Predict")
 
         if submitted:
-            input_df = pd.DataFrame([input_data])
-
             with st.spinner("Predicting..."):
-                results = forecaster.predict(input_df)
+                try:
+                    result = inference_service.predict(forecaster, input_data)
+                    results = result.predictions
+                    metadata = result.metadata
+                except InvalidInputError as e:
+                    st.error(f"Invalid input: {e}")
+                    return
+                except Exception as e:
+                    st.error(f"Prediction failed: {e}")
+                    return
 
             st.subheader("Prediction Results")
 
-            if "Location" in forecaster.proximity_encoders:
-                encoder = forecaster.proximity_encoders["Location"]
-                loc_val = input_data.get("Location")
-                if loc_val:
-                    st.markdown(f"**Target Location Zone:** {encoder.mapper.get_zone(loc_val)}")
+            if metadata.get("location_zone"):
+                st.markdown(f"**Target Location Zone:** {metadata['location_zone']}")
 
             res_data = []
             for target, preds in results.items():
                 row = {"Component": target}
                 for q_key, val in preds.items():
-                    row[q_key] = val[0]
+                    row[q_key] = val
                 res_data.append(row)
 
             res_df = pd.DataFrame(res_data)
