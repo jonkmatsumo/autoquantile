@@ -11,8 +11,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from conftest import create_test_config
 
 
-def test_start_workflow_works_without_auth_when_key_not_set(client_no_auth):
-    """Test that start workflow works without auth when API_KEY not set (development mode). Args: client_no_auth: Test client without auth."""
+@patch("src.services.workflow_service.get_langchain_llm")
+def test_start_workflow_works_without_auth_when_key_not_set(mock_get_llm, client_no_auth):
+    """Test that start workflow works without auth when API_KEY not set (development mode). Args: mock_get_llm: Mock LLM getter. client_no_auth: Test client without auth."""
+    mock_llm = MagicMock()
+    mock_get_llm.return_value = mock_llm
+    
     sample_data = json.dumps([{"col1": 1, "col2": "a"}])
     response = client_no_auth.post(
         "/api/v1/workflow/start",
@@ -26,8 +30,12 @@ def test_start_workflow_works_without_auth_when_key_not_set(client_no_auth):
     assert response.status_code in [200, 400, 401]
 
 
-def test_get_workflow_state_works_without_auth_when_key_not_set(client_no_auth):
-    """Test that get workflow state works without auth when API_KEY not set (development mode). Args: client_no_auth: Test client without auth."""
+@patch("src.services.workflow_service.get_langchain_llm")
+def test_get_workflow_state_works_without_auth_when_key_not_set(mock_get_llm, client_no_auth):
+    """Test that get workflow state works without auth when API_KEY not set (development mode). Args: mock_get_llm: Mock LLM getter. client_no_auth: Test client without auth."""
+    mock_llm = MagicMock()
+    mock_get_llm.return_value = mock_llm
+    
     response = client_no_auth.get("/api/v1/workflow/test123")
     assert response.status_code in [200, 401, 404]
 
