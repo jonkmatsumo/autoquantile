@@ -6,12 +6,30 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+from fastapi import Request
 
 from src.api.dto.analytics import DataSummaryRequest
-from src.api.exceptions import InvalidInputError, ModelNotFoundError as APIModelNotFoundError
+from src.api.exceptions import InvalidInputError
+from src.api.exceptions import ModelNotFoundError as APIModelNotFoundError
 from src.api.routers.analytics import get_data_summary, get_feature_importance
 from src.services.analytics_service import AnalyticsService
 from src.services.inference_service import InferenceService, ModelNotFoundError
+
+
+def create_mock_request(headers: dict = None) -> Request:
+    """Create a mock Request object for testing.
+
+    Args:
+        headers (dict): Optional headers dictionary.
+
+    Returns:
+        Request: Mock Request object.
+    """
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = headers or {}
+    mock_request.client = MagicMock()
+    mock_request.client.host = "127.0.0.1"
+    return mock_request
 
 
 class TestGetDataSummary:
@@ -22,12 +40,18 @@ class TestGetDataSummary:
         """Test exception during JSON parsing raises InvalidInputError."""
         mock_read_json.side_effect = ValueError("Invalid JSON format")
 
-        request = DataSummaryRequest(data=json.dumps([{"col1": 1}]))
+        mock_request = create_mock_request()
+        data_summary_request = DataSummaryRequest(data=json.dumps([{"col1": 1}]))
         analytics_service = MagicMock(spec=AnalyticsService)
 
         with pytest.raises(InvalidInputError) as exc_info:
             asyncio.run(
-                get_data_summary(request, user="test_user", analytics_service=analytics_service)
+                get_data_summary(
+                    mock_request,
+                    data_summary_request,
+                    user="test_user",
+                    analytics_service=analytics_service,
+                )
             )
 
         assert "Failed to parse data" in str(exc_info.value.message)
@@ -41,12 +65,18 @@ class TestGetDataSummary:
 
         mock_read_json.side_effect = JSONDecodeError("Expecting value", "", 0)
 
-        request = DataSummaryRequest(data="invalid json")
+        mock_request = create_mock_request()
+        data_summary_request = DataSummaryRequest(data="invalid json")
         analytics_service = MagicMock(spec=AnalyticsService)
 
         with pytest.raises(InvalidInputError) as exc_info:
             asyncio.run(
-                get_data_summary(request, user="test_user", analytics_service=analytics_service)
+                get_data_summary(
+                    mock_request,
+                    data_summary_request,
+                    user="test_user",
+                    analytics_service=analytics_service,
+                )
             )
 
         assert "Failed to parse data" in str(exc_info.value.message)
@@ -64,10 +94,16 @@ class TestGetDataSummary:
             "unique_col2": 2,
         }
 
-        request = DataSummaryRequest(data=json.dumps([{"col1": 1, "col2": "a"}]))
+        mock_request = create_mock_request()
+        data_summary_request = DataSummaryRequest(data=json.dumps([{"col1": 1, "col2": "a"}]))
 
         response = asyncio.run(
-            get_data_summary(request, user="test_user", analytics_service=analytics_service)
+            get_data_summary(
+                mock_request,
+                data_summary_request,
+                user="test_user",
+                analytics_service=analytics_service,
+            )
         )
 
         assert response.total_samples == 2
@@ -88,9 +124,12 @@ class TestGetFeatureImportance:
         analytics_service = MagicMock(spec=AnalyticsService)
         analytics_service.get_feature_importance.return_value = None
 
+        mock_request = create_mock_request()
+
         with pytest.raises(InvalidInputError) as exc_info:
             asyncio.run(
                 get_feature_importance(
+                    mock_request,
                     run_id="test123",
                     target="BaseSalary",
                     quantile=0.5,
@@ -110,10 +149,12 @@ class TestGetFeatureImportance:
         inference_service.load_model.side_effect = ModelNotFoundError("Model not found")
 
         analytics_service = MagicMock(spec=AnalyticsService)
+        mock_request = create_mock_request()
 
         with pytest.raises(APIModelNotFoundError) as exc_info:
             asyncio.run(
                 get_feature_importance(
+                    mock_request,
                     run_id="nonexistent",
                     target="BaseSalary",
                     quantile=0.5,
@@ -137,8 +178,11 @@ class TestGetFeatureImportance:
             columns=["Feature", "Gain"]
         )
 
+        mock_request = create_mock_request()
+
         response = asyncio.run(
             get_feature_importance(
+                mock_request,
                 run_id="test123",
                 target="BaseSalary",
                 quantile=0.5,
@@ -166,8 +210,11 @@ class TestGetFeatureImportance:
         analytics_service = MagicMock(spec=AnalyticsService)
         analytics_service.get_feature_importance.return_value = df_imp
 
+        mock_request = create_mock_request()
+
         response = asyncio.run(
             get_feature_importance(
+                mock_request,
                 run_id="test123",
                 target="BaseSalary",
                 quantile=0.5,

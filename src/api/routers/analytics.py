@@ -1,6 +1,6 @@
 """Analytics API endpoints."""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from src.api.dependencies import get_current_user
 from src.api.dto.analytics import (
@@ -11,6 +11,7 @@ from src.api.dto.analytics import (
 )
 from src.api.exceptions import InvalidInputError
 from src.api.exceptions import ModelNotFoundError as APIModelNotFoundError
+from src.api.rate_limiting import ANALYTICS_LIMIT, limiter
 from src.services.analytics_service import AnalyticsService
 from src.services.inference_service import InferenceService, ModelNotFoundError
 from src.utils.logger import get_logger
@@ -39,15 +40,18 @@ def get_inference_service() -> InferenceService:
 
 
 @router.post("/analytics/data-summary", response_model=DataSummaryResponse)
+@limiter.limit(ANALYTICS_LIMIT)
 async def get_data_summary(
-    request: DataSummaryRequest,
+    request: Request,
+    data_summary_request: DataSummaryRequest,
     user: str = Depends(get_current_user),
     analytics_service: AnalyticsService = Depends(get_analytics_service),
 ):
     """Get data summary statistics.
 
     Args:
-        request (DataSummaryRequest): Data summary request.
+        request (Request): FastAPI request object.
+        data_summary_request (DataSummaryRequest): Data summary request.
         user (str): Current user.
         analytics_service (AnalyticsService): Analytics service.
 
@@ -62,7 +66,7 @@ async def get_data_summary(
     import pandas as pd
 
     try:
-        df = pd.read_json(StringIO(request.data), orient="records")
+        df = pd.read_json(StringIO(data_summary_request.data), orient="records")
         summary = analytics_service.get_data_summary(df)
 
         unique_counts = {
@@ -83,7 +87,9 @@ async def get_data_summary(
 @router.get(
     "/models/{run_id}/analytics/feature-importance", response_model=FeatureImportanceResponse
 )
+@limiter.limit(ANALYTICS_LIMIT)
 async def get_feature_importance(
+    request: Request,
     run_id: str,
     target: str = Query(..., description="Target column name"),
     quantile: float = Query(..., ge=0.0, le=1.0, description="Quantile value (0.0-1.0)"),
@@ -94,6 +100,7 @@ async def get_feature_importance(
     """Get feature importance for a model.
 
     Args:
+        request (Request): FastAPI request object.
         run_id (str): MLflow run ID.
         target (str): Target column.
         quantile (float): Quantile value.

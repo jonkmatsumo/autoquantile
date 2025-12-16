@@ -3,9 +3,12 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from src.api.dto.common import ErrorDetail, ErrorResponse
 from src.api.exceptions import APIException
+from src.api.rate_limiting import RATE_LIMIT_ENABLED, limiter
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -32,6 +35,37 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    if RATE_LIMIT_ENABLED:
+        app.state.limiter = limiter
+        app.add_middleware(SlowAPIMiddleware)
+
+    @app.exception_handler(RateLimitExceeded)
+    async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+        """Handle rate limit exceeded exceptions.
+
+        Args:
+            request (Request): Request object.
+            exc (RateLimitExceeded): Rate limit exception.
+
+        Returns:
+            JSONResponse: Error response.
+        """
+        logger.warning(
+            f"Rate limit exceeded: {exc.detail}",
+            extra={"detail": exc.detail, "retry_after": getattr(exc, "retry_after", None)},
+        )
+        return JSONResponse(
+            status_code=429,
+            content=ErrorResponse(
+                status="error",
+                error=ErrorDetail(
+                    code="RATE_LIMIT_EXCEEDED",
+                    message=f"Rate limit exceeded: {exc.detail}",
+                    details={"retry_after": exc.retry_after} if hasattr(exc, "retry_after") else {},
+                ),
+            ).model_dump(),
+        )
 
     @app.exception_handler(APIException)
     async def api_exception_handler(request: Request, exc: APIException):

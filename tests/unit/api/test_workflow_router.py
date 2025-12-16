@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+from fastapi import Request
 
 from src.api.dto.workflow import (
     ClassificationConfirmationRequest,
@@ -28,6 +29,22 @@ from src.api.routers.workflow import (
     start_workflow,
 )
 from src.services.workflow_service import WorkflowService
+
+
+def create_mock_request(headers: dict = None) -> Request:
+    """Create a mock Request object for testing.
+
+    Args:
+        headers (dict): Optional headers dictionary.
+
+    Returns:
+        Request: Mock Request object.
+    """
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = headers or {}
+    mock_request.client = MagicMock()
+    mock_request.client.host = "127.0.0.1"
+    return mock_request
 
 
 @pytest.fixture(autouse=True)
@@ -57,16 +74,17 @@ class TestStartWorkflow:
         mock_df = pd.DataFrame({"col1": [1, 2], "col2": ["a", "b"]})
         mock_read_json.return_value = mock_df
 
-        request = WorkflowStartRequest(
+        workflow_start_request = WorkflowStartRequest(
             data=json.dumps([{"col1": 1, "col2": "a"}]),
             columns=["col1", "col2"],
             dtypes={"col1": "int64", "col2": "object"},
             dataset_size=2,
             provider="openai",
         )
+        mock_request = create_mock_request()
 
         with pytest.raises(InvalidInputError) as exc_info:
-            asyncio.run(start_workflow(request, user="test_user"))
+            asyncio.run(start_workflow(mock_request, workflow_start_request, user="test_user"))
 
         assert "Test error message" in str(exc_info.value.message)
 
@@ -87,15 +105,18 @@ class TestStartWorkflow:
         mock_df = pd.DataFrame({"col1": [1, 2], "col2": ["a", "b"]})
         mock_read_json.return_value = mock_df
 
-        request = WorkflowStartRequest(
+        workflow_start_request = WorkflowStartRequest(
             data=json.dumps([{"col1": 1, "col2": "a"}]),
             columns=["col1", "col2"],
             dtypes={"col1": "int64", "col2": "object"},
             dataset_size=2,
             provider="openai",
         )
+        mock_request = create_mock_request()
 
-        response = asyncio.run(start_workflow(request, user="test_user"))
+        response = asyncio.run(
+            start_workflow(mock_request, workflow_start_request, user="test_user")
+        )
 
         assert response.workflow_id in _workflow_storage
         assert _workflow_storage[response.workflow_id] == mock_service
@@ -118,14 +139,17 @@ class TestStartWorkflow:
         mock_df = pd.DataFrame({"col1": [1]})
         mock_read_json.return_value = mock_df
 
-        request = WorkflowStartRequest(
+        workflow_start_request = WorkflowStartRequest(
             data=json.dumps([{"col1": 1}]),
             columns=["col1"],
             dtypes={"col1": "int64"},
             dataset_size=1,
         )
+        mock_request = create_mock_request()
 
-        response = asyncio.run(start_workflow(request, user="test_user"))
+        response = asyncio.run(
+            start_workflow(mock_request, workflow_start_request, user="test_user")
+        )
 
         assert response.workflow_id is not None
         assert response.phase == "classification"
@@ -138,8 +162,10 @@ class TestGetWorkflowState:
 
     def test_get_workflow_state_not_found(self):
         """Test workflow not found raises WorkflowNotFoundError."""
+        mock_request = create_mock_request()
+
         with pytest.raises(WorkflowNotFoundError) as exc_info:
-            asyncio.run(get_workflow_state("nonexistent", user="test_user"))
+            asyncio.run(get_workflow_state(mock_request, "nonexistent", user="test_user"))
 
         assert "nonexistent" in str(exc_info.value.message)
         assert exc_info.value.status_code == 404
@@ -157,8 +183,9 @@ class TestGetWorkflowState:
 
         workflow_id = "test_workflow_123"
         _workflow_storage[workflow_id] = mock_service
+        mock_request = create_mock_request()
 
-        response = asyncio.run(get_workflow_state(workflow_id, user="test_user"))
+        response = asyncio.run(get_workflow_state(mock_request, workflow_id, user="test_user"))
 
         assert response.workflow_id == workflow_id
         assert response.phase == "encoding"
@@ -177,8 +204,9 @@ class TestGetWorkflowState:
 
         workflow_id = "test_workflow_456"
         _workflow_storage[workflow_id] = mock_service
+        mock_request = create_mock_request()
 
-        response = asyncio.run(get_workflow_state(workflow_id, user="test_user"))
+        response = asyncio.run(get_workflow_state(mock_request, workflow_id, user="test_user"))
 
         assert response.workflow_id == workflow_id
         assert response.phase == "classification"
@@ -190,16 +218,21 @@ class TestConfirmClassification:
 
     def test_confirm_classification_workflow_not_found(self):
         """Test workflow not found raises WorkflowNotFoundError."""
-        request = ClassificationConfirmationRequest(
+        classification_request = ClassificationConfirmationRequest(
             modifications=ClassificationModifications(
                 targets=["target1"],
                 features=["feat1"],
                 ignore=[],
             )
         )
+        mock_request = create_mock_request()
 
         with pytest.raises(WorkflowNotFoundError) as exc_info:
-            asyncio.run(confirm_classification("nonexistent", request, user="test_user"))
+            asyncio.run(
+                confirm_classification(
+                    mock_request, "nonexistent", classification_request, user="test_user"
+                )
+            )
 
         assert "nonexistent" in str(exc_info.value.message)
 
@@ -214,16 +247,21 @@ class TestConfirmClassification:
         workflow_id = "test_workflow_789"
         _workflow_storage[workflow_id] = mock_service
 
-        request = ClassificationConfirmationRequest(
+        classification_request = ClassificationConfirmationRequest(
             modifications=ClassificationModifications(
                 targets=["target1"],
                 features=["feat1"],
                 ignore=[],
             )
         )
+        mock_request = create_mock_request()
 
         with pytest.raises(InvalidInputError) as exc_info:
-            asyncio.run(confirm_classification(workflow_id, request, user="test_user"))
+            asyncio.run(
+                confirm_classification(
+                    mock_request, workflow_id, classification_request, user="test_user"
+                )
+            )
 
         assert "Classification failed" in str(exc_info.value.message)
 
@@ -238,15 +276,20 @@ class TestConfirmClassification:
         workflow_id = "test_workflow_success"
         _workflow_storage[workflow_id] = mock_service
 
-        request = ClassificationConfirmationRequest(
+        classification_request = ClassificationConfirmationRequest(
             modifications=ClassificationModifications(
                 targets=["target1", "target2"],
                 features=["feat1", "feat2"],
                 ignore=["ignore1"],
             )
         )
+        mock_request = create_mock_request()
 
-        response = asyncio.run(confirm_classification(workflow_id, request, user="test_user"))
+        response = asyncio.run(
+            confirm_classification(
+                mock_request, workflow_id, classification_request, user="test_user"
+            )
+        )
 
         assert response.workflow_id == workflow_id
         assert response.phase == "encoding"
@@ -266,15 +309,18 @@ class TestConfirmEncoding:
 
     def test_confirm_encoding_workflow_not_found(self):
         """Test workflow not found raises WorkflowNotFoundError."""
-        request = EncodingConfirmationRequest(
+        encoding_request = EncodingConfirmationRequest(
             modifications=EncodingModifications(
                 encodings={},
                 optional_encodings={},
             )
         )
+        mock_request = create_mock_request()
 
         with pytest.raises(WorkflowNotFoundError) as exc_info:
-            asyncio.run(confirm_encoding("nonexistent", request, user="test_user"))
+            asyncio.run(
+                confirm_encoding(mock_request, "nonexistent", encoding_request, user="test_user")
+            )
 
         assert "nonexistent" in str(exc_info.value.message)
 
@@ -289,7 +335,7 @@ class TestConfirmEncoding:
         workflow_id = "test_encoding_parsing"
         _workflow_storage[workflow_id] = mock_service
 
-        request = EncodingConfirmationRequest(
+        encoding_request = EncodingConfirmationRequest(
             modifications=EncodingModifications(
                 encodings={
                     "col1": EncodingConfig(
@@ -311,8 +357,11 @@ class TestConfirmEncoding:
                 },
             )
         )
+        mock_request = create_mock_request()
 
-        response = asyncio.run(confirm_encoding(workflow_id, request, user="test_user"))
+        response = asyncio.run(
+            confirm_encoding(mock_request, workflow_id, encoding_request, user="test_user")
+        )
 
         assert response.workflow_id == workflow_id
         assert response.phase == "configuration"
@@ -338,15 +387,18 @@ class TestConfirmEncoding:
         workflow_id = "test_encoding_error"
         _workflow_storage[workflow_id] = mock_service
 
-        request = EncodingConfirmationRequest(
+        encoding_request = EncodingConfirmationRequest(
             modifications=EncodingModifications(
                 encodings={},
                 optional_encodings={},
             )
         )
+        mock_request = create_mock_request()
 
         with pytest.raises(InvalidInputError) as exc_info:
-            asyncio.run(confirm_encoding(workflow_id, request, user="test_user"))
+            asyncio.run(
+                confirm_encoding(mock_request, workflow_id, encoding_request, user="test_user")
+            )
 
         assert "Encoding failed" in str(exc_info.value.message)
 
@@ -361,7 +413,7 @@ class TestConfirmEncoding:
         workflow_id = "test_encoding_success"
         _workflow_storage[workflow_id] = mock_service
 
-        request = EncodingConfirmationRequest(
+        encoding_request = EncodingConfirmationRequest(
             modifications=EncodingModifications(
                 encodings={
                     "col1": EncodingConfig(type="numeric", mapping=None, reasoning=None),
@@ -369,8 +421,11 @@ class TestConfirmEncoding:
                 optional_encodings={},
             )
         )
+        mock_request = create_mock_request()
 
-        response = asyncio.run(confirm_encoding(workflow_id, request, user="test_user"))
+        response = asyncio.run(
+            confirm_encoding(mock_request, workflow_id, encoding_request, user="test_user")
+        )
 
         assert response.workflow_id == workflow_id
         assert response.phase == "configuration"
@@ -382,14 +437,19 @@ class TestFinalizeConfiguration:
 
     def test_finalize_configuration_workflow_not_found(self):
         """Test workflow not found raises WorkflowNotFoundError."""
-        request = ConfigurationFinalizationRequest(
+        finalization_request = ConfigurationFinalizationRequest(
             features=[FeatureConfig(name="feat1", monotone_constraint=1)],
             quantiles=[0.5],
             hyperparameters=Hyperparameters(training={}, cv={}),
         )
+        mock_request = create_mock_request()
 
         with pytest.raises(WorkflowNotFoundError) as exc_info:
-            asyncio.run(finalize_configuration("nonexistent", request, user="test_user"))
+            asyncio.run(
+                finalize_configuration(
+                    mock_request, "nonexistent", finalization_request, user="test_user"
+                )
+            )
 
         assert "nonexistent" in str(exc_info.value.message)
 
@@ -401,14 +461,19 @@ class TestFinalizeConfiguration:
         workflow_id = "test_no_config"
         _workflow_storage[workflow_id] = mock_service
 
-        request = ConfigurationFinalizationRequest(
+        finalization_request = ConfigurationFinalizationRequest(
             features=[FeatureConfig(name="feat1", monotone_constraint=1)],
             quantiles=[0.5],
             hyperparameters=Hyperparameters(training={}, cv={}),
         )
+        mock_request = create_mock_request()
 
         with pytest.raises(InvalidInputError) as exc_info:
-            asyncio.run(finalize_configuration(workflow_id, request, user="test_user"))
+            asyncio.run(
+                finalize_configuration(
+                    mock_request, workflow_id, finalization_request, user="test_user"
+                )
+            )
 
         assert "No final configuration available" in str(exc_info.value.message)
 
@@ -427,7 +492,7 @@ class TestFinalizeConfiguration:
         workflow_id = "test_finalize_success"
         _workflow_storage[workflow_id] = mock_service
 
-        request = ConfigurationFinalizationRequest(
+        finalization_request = ConfigurationFinalizationRequest(
             features=[
                 FeatureConfig(name="feat1", monotone_constraint=1),
                 FeatureConfig(name="feat2", monotone_constraint=-1),
@@ -439,8 +504,13 @@ class TestFinalizeConfiguration:
             ),
             location_settings={"max_distance_km": 50},
         )
+        mock_request = create_mock_request()
 
-        response = asyncio.run(finalize_configuration(workflow_id, request, user="test_user"))
+        response = asyncio.run(
+            finalize_configuration(
+                mock_request, workflow_id, finalization_request, user="test_user"
+            )
+        )
 
         assert response.workflow_id == workflow_id
         assert response.phase == "complete"
@@ -467,14 +537,19 @@ class TestFinalizeConfiguration:
         workflow_id = "test_finalize_no_location"
         _workflow_storage[workflow_id] = mock_service
 
-        request = ConfigurationFinalizationRequest(
+        finalization_request = ConfigurationFinalizationRequest(
             features=[FeatureConfig(name="feat1", monotone_constraint=0)],
             quantiles=[0.5],
             hyperparameters=Hyperparameters(training={"eta": 0.1}, cv={"nfold": 3}),
             location_settings=None,
         )
+        mock_request = create_mock_request()
 
-        response = asyncio.run(finalize_configuration(workflow_id, request, user="test_user"))
+        response = asyncio.run(
+            finalize_configuration(
+                mock_request, workflow_id, finalization_request, user="test_user"
+            )
+        )
 
         assert response.workflow_id == workflow_id
         assert response.phase == "complete"
@@ -495,7 +570,7 @@ class TestFinalizeConfiguration:
         workflow_id = "test_update_config"
         _workflow_storage[workflow_id] = mock_service
 
-        request = ConfigurationFinalizationRequest(
+        finalization_request = ConfigurationFinalizationRequest(
             features=[
                 FeatureConfig(name="new_feat1", monotone_constraint=1),
                 FeatureConfig(name="new_feat2", monotone_constraint=-1),
@@ -506,8 +581,13 @@ class TestFinalizeConfiguration:
                 cv={"nfold": 10},
             ),
         )
+        mock_request = create_mock_request()
 
-        response = asyncio.run(finalize_configuration(workflow_id, request, user="test_user"))
+        response = asyncio.run(
+            finalize_configuration(
+                mock_request, workflow_id, finalization_request, user="test_user"
+            )
+        )
 
         final_features = response.final_config["model"]["features"]
         assert len(final_features) == 2

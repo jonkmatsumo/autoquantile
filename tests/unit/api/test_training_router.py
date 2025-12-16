@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+from fastapi import Request
 
 from src.api.dto.training import TrainingJobRequest
 from src.api.exceptions import InvalidInputError, TrainingJobNotFoundError
@@ -18,6 +19,22 @@ from src.api.routers.training import (
 from src.api.storage import get_dataset_storage
 from src.services.analytics_service import AnalyticsService
 from src.services.training_service import TrainingService
+
+
+def create_mock_request(headers: dict = None) -> Request:
+    """Create a mock Request object for testing.
+
+    Args:
+        headers (dict): Optional headers dictionary.
+
+    Returns:
+        Request: Mock Request object.
+    """
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = headers or {}
+    mock_request.client = MagicMock()
+    mock_request.client.host = "127.0.0.1"
+    return mock_request
 
 
 @pytest.fixture(autouse=True)
@@ -48,10 +65,12 @@ class TestUploadTrainingData:
         training_service.validate_csv_file.return_value = (True, None, None)
 
         analytics_service = MagicMock(spec=AnalyticsService)
+        mock_request = create_mock_request()
 
         with pytest.raises(InvalidInputError) as exc_info:
             asyncio.run(
                 upload_training_data(
+                    mock_request,
                     file=mock_file,
                     dataset_name=None,
                     user="test_user",
@@ -76,10 +95,12 @@ class TestUploadTrainingData:
         training_service.validate_csv_file.return_value = (False, "Invalid format", None)
 
         analytics_service = MagicMock(spec=AnalyticsService)
+        mock_request = create_mock_request()
 
         with pytest.raises(InvalidInputError) as exc_info:
             asyncio.run(
                 upload_training_data(
+                    mock_request,
                     file=mock_file,
                     dataset_name=None,
                     user="test_user",
@@ -98,14 +119,20 @@ class TestStartTraining:
         """Test dataset not found raises InvalidInputError."""
         training_service = MagicMock(spec=TrainingService)
 
-        request = TrainingJobRequest(
+        training_request = TrainingJobRequest(
             dataset_id="nonexistent",
             config={"model": {"targets": ["target1"]}},
         )
+        mock_request = create_mock_request()
 
         with pytest.raises(InvalidInputError) as exc_info:
             asyncio.run(
-                start_training(request, user="test_user", training_service=training_service)
+                start_training(
+                    mock_request,
+                    training_request,
+                    user="test_user",
+                    training_service=training_service,
+                )
             )
 
         assert "nonexistent" in str(exc_info.value.message)
@@ -120,14 +147,20 @@ class TestStartTraining:
         training_service = MagicMock(spec=TrainingService)
         training_service.start_training_async.side_effect = ValueError("Invalid config")
 
-        request = TrainingJobRequest(
+        training_request = TrainingJobRequest(
             dataset_id="test_dataset",
             config={"model": {"targets": ["target1"]}},
         )
+        mock_request = create_mock_request()
 
         with pytest.raises(InvalidInputError) as exc_info:
             asyncio.run(
-                start_training(request, user="test_user", training_service=training_service)
+                start_training(
+                    mock_request,
+                    training_request,
+                    user="test_user",
+                    training_service=training_service,
+                )
             )
 
         assert "Invalid config" in str(exc_info.value.message)
@@ -141,11 +174,15 @@ class TestGetTrainingJobStatus:
         """Test job not found raises TrainingJobNotFoundError."""
         training_service = MagicMock(spec=TrainingService)
         training_service.get_job_status.return_value = None
+        mock_request = create_mock_request()
 
         with pytest.raises(TrainingJobNotFoundError) as exc_info:
             asyncio.run(
                 get_training_job_status(
-                    "nonexistent", user="test_user", training_service=training_service
+                    mock_request,
+                    "nonexistent",
+                    user="test_user",
+                    training_service=training_service,
                 )
             )
 
@@ -162,9 +199,12 @@ class TestGetTrainingJobStatus:
             "submitted_at": datetime(2023, 1, 1),
             "completed_at": datetime(2023, 1, 2),
         }
+        mock_request = create_mock_request()
 
         response = asyncio.run(
-            get_training_job_status("job123", user="test_user", training_service=training_service)
+            get_training_job_status(
+                mock_request, "job123", user="test_user", training_service=training_service
+            )
         )
 
         assert response.status == "COMPLETED"
@@ -182,9 +222,12 @@ class TestGetTrainingJobStatus:
             "logs": ["log1"],
             "submitted_at": datetime(2023, 1, 1),
         }
+        mock_request = create_mock_request()
 
         response = asyncio.run(
-            get_training_job_status("job123", user="test_user", training_service=training_service)
+            get_training_job_status(
+                mock_request, "job123", user="test_user", training_service=training_service
+            )
         )
 
         assert response.status == "RUNNING"
@@ -199,9 +242,12 @@ class TestGetTrainingJobStatus:
             "submitted_at": datetime(2023, 1, 1),
             "completed_at": datetime(2023, 1, 2),
         }
+        mock_request = create_mock_request()
 
         response = asyncio.run(
-            get_training_job_status("job123", user="test_user", training_service=training_service)
+            get_training_job_status(
+                mock_request, "job123", user="test_user", training_service=training_service
+            )
         )
 
         assert response.status == "COMPLETED"
@@ -214,9 +260,12 @@ class TestGetTrainingJobStatus:
             "status": "QUEUED",
             "submitted_at": datetime(2023, 1, 1),
         }
+        mock_request = create_mock_request()
 
         response = asyncio.run(
-            get_training_job_status("job123", user="test_user", training_service=training_service)
+            get_training_job_status(
+                mock_request, "job123", user="test_user", training_service=training_service
+            )
         )
 
         assert response.status == "QUEUED"
@@ -230,9 +279,12 @@ class TestGetTrainingJobStatus:
             "error": "Training failed",
             "submitted_at": datetime(2023, 1, 1),
         }
+        mock_request = create_mock_request()
 
         response = asyncio.run(
-            get_training_job_status("job123", user="test_user", training_service=training_service)
+            get_training_job_status(
+                mock_request, "job123", user="test_user", training_service=training_service
+            )
         )
 
         assert response.status == "FAILED"
@@ -249,9 +301,12 @@ class TestGetTrainingJobStatus:
             "submitted_at": datetime(2023, 1, 1),
             "completed_at": datetime(2023, 1, 2),
         }
+        mock_request = create_mock_request()
 
         response = asyncio.run(
-            get_training_job_status("job123", user="test_user", training_service=training_service)
+            get_training_job_status(
+                mock_request, "job123", user="test_user", training_service=training_service
+            )
         )
 
         assert response.result is not None
@@ -282,9 +337,11 @@ class TestListTrainingJobs:
                 "run_id": "run3",
             },
         }
+        mock_request = create_mock_request()
 
         response = asyncio.run(
             list_training_jobs(
+                mock_request,
                 limit=50,
                 offset=0,
                 status="COMPLETED",
@@ -308,9 +365,11 @@ class TestListTrainingJobs:
             }
             for i in range(1, 11)
         }
+        mock_request = create_mock_request()
 
         response = asyncio.run(
             list_training_jobs(
+                mock_request,
                 limit=3,
                 offset=2,
                 status=None,
@@ -336,9 +395,11 @@ class TestListTrainingJobs:
             }
             for i in range(1, 6)
         }
+        mock_request = create_mock_request()
 
         response = asyncio.run(
             list_training_jobs(
+                mock_request,
                 limit=3,
                 offset=3,
                 status=None,
@@ -355,9 +416,11 @@ class TestListTrainingJobs:
         """Test pagination with empty list."""
         training_service = MagicMock(spec=TrainingService)
         training_service._jobs = {}
+        mock_request = create_mock_request()
 
         response = asyncio.run(
             list_training_jobs(
+                mock_request,
                 limit=50,
                 offset=0,
                 status=None,

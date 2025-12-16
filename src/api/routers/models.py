@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from src.api.dependencies import get_current_user
 from src.api.dto.common import BaseResponse, PaginationResponse
@@ -15,6 +15,7 @@ from src.api.dto.models import (
     RankedFeatureSchema,
 )
 from src.api.exceptions import ModelNotFoundError as APIModelNotFoundError
+from src.api.rate_limiting import MODELS_LIMIT, limiter
 from src.services.inference_service import InferenceService, ModelNotFoundError
 from src.services.model_registry import ModelRegistry
 from src.utils.logger import get_logger
@@ -43,7 +44,9 @@ def get_inference_service() -> InferenceService:
 
 
 @router.get("", response_model=BaseResponse)
+@limiter.limit(MODELS_LIMIT)
 async def list_models(
+    request: Request,
     limit: int = Query(default=50, ge=1, le=100, description="Maximum number of items to return"),
     offset: int = Query(default=0, ge=0, description="Number of items to skip"),
     experiment_name: Optional[str] = Query(default=None, description="Filter by experiment name"),
@@ -53,6 +56,7 @@ async def list_models(
     """List all available models.
 
     Args:
+        request (Request): FastAPI request object.
         limit (int): Maximum items to return.
         offset (int): Items to skip.
         experiment_name (Optional[str]): Filter by experiment.
@@ -97,7 +101,9 @@ async def list_models(
 
 
 @router.get("/{run_id}", response_model=ModelDetailsResponse)
+@limiter.limit(MODELS_LIMIT)
 async def get_model_details(
+    request: Request,
     run_id: str,
     user: str = Depends(get_current_user),
     inference_service: InferenceService = Depends(get_inference_service),
@@ -105,6 +111,7 @@ async def get_model_details(
     """Get detailed information about a model.
 
     Args:
+        request (Request): FastAPI request object.
         run_id (str): MLflow run ID.
         user (str): Current user.
         inference_service (InferenceService): Inference service.
@@ -168,12 +175,27 @@ async def get_model_details(
 
 
 @router.get("/{run_id}/schema", response_model=ModelSchemaResponse)
+@limiter.limit(MODELS_LIMIT)
 async def get_model_schema(
+    request: Request,
     run_id: str,
     user: str = Depends(get_current_user),
     inference_service: InferenceService = Depends(get_inference_service),
 ):
-    """Get model schema. Args: run_id (str): MLflow run ID. user (str): Current user. inference_service (InferenceService): Inference service. Returns: ModelSchemaResponse: Model schema. Raises: APIModelNotFoundError: If model not found."""
+    """Get model schema.
+
+    Args:
+        request (Request): FastAPI request object.
+        run_id (str): MLflow run ID.
+        user (str): Current user.
+        inference_service (InferenceService): Inference service.
+
+    Returns:
+        ModelSchemaResponse: Model schema.
+
+    Raises:
+        APIModelNotFoundError: If model not found.
+    """
     try:
         model = inference_service.load_model(run_id)
         schema = inference_service.get_model_schema(model)

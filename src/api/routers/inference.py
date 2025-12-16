@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from src.api.dependencies import get_current_user
 from src.api.dto.inference import (
@@ -13,6 +13,7 @@ from src.api.dto.inference import (
 )
 from src.api.exceptions import InvalidInputError
 from src.api.exceptions import ModelNotFoundError as APIModelNotFoundError
+from src.api.rate_limiting import INFERENCE_LIMIT, limiter
 from src.services.inference_service import InferenceService
 from src.services.inference_service import InvalidInputError as ServiceInvalidInputError
 from src.services.inference_service import ModelNotFoundError
@@ -33,17 +34,20 @@ def get_inference_service() -> InferenceService:
 
 
 @router.post("/{run_id}/predict", response_model=PredictionResponse)
+@limiter.limit(INFERENCE_LIMIT)
 async def predict(
+    request: Request,
     run_id: str,
-    request: PredictionRequest,
+    prediction_request: PredictionRequest,
     user: str = Depends(get_current_user),
     inference_service: InferenceService = Depends(get_inference_service),
 ):
     """Predict salary quantiles for given features.
 
     Args:
+        request (Request): FastAPI request object.
         run_id (str): MLflow run ID.
-        request (PredictionRequest): Prediction request.
+        prediction_request (PredictionRequest): Prediction request.
         user (str): Current user.
         inference_service (InferenceService): Inference service.
 
@@ -56,7 +60,7 @@ async def predict(
     """
     try:
         model = inference_service.load_model(run_id)
-        result = inference_service.predict(model, request.features)
+        result = inference_service.predict(model, prediction_request.features)
 
         from src.api.dto.inference import PredictionMetadata
 
@@ -75,17 +79,20 @@ async def predict(
 
 
 @router.post("/{run_id}/predict/batch", response_model=BatchPredictionResponse)
+@limiter.limit(INFERENCE_LIMIT)
 async def predict_batch(
+    request: Request,
     run_id: str,
-    request: BatchPredictionRequest,
+    batch_request: BatchPredictionRequest,
     user: str = Depends(get_current_user),
     inference_service: InferenceService = Depends(get_inference_service),
 ):
     """Batch predict salary quantiles for multiple feature sets.
 
     Args:
+        request (Request): FastAPI request object.
         run_id (str): MLflow run ID.
-        request (BatchPredictionRequest): Batch prediction request.
+        batch_request (BatchPredictionRequest): Batch prediction request.
         user (str): Current user.
         inference_service (InferenceService): Inference service.
 
@@ -100,7 +107,7 @@ async def predict_batch(
         model = inference_service.load_model(run_id)
         predictions = []
 
-        for features in request.features:
+        for features in batch_request.features:
             result = inference_service.predict(model, features)
             from src.api.dto.inference import PredictionMetadata
 

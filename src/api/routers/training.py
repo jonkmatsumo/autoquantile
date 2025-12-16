@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 
 from src.api.dependencies import get_current_user
 from src.api.dto.common import BaseResponse, PaginationResponse
@@ -14,6 +14,7 @@ from src.api.dto.training import (
     TrainingJobSummary,
 )
 from src.api.exceptions import InvalidInputError, TrainingJobNotFoundError
+from src.api.rate_limiting import TRAINING_LIMIT, limiter
 from src.api.storage import get_dataset_storage
 from src.services.analytics_service import AnalyticsService
 from src.services.training_service import TrainingService
@@ -43,7 +44,9 @@ def get_analytics_service() -> AnalyticsService:
 
 
 @router.post("/data/upload", response_model=DataUploadResponse)
+@limiter.limit(TRAINING_LIMIT)
 async def upload_training_data(
+    request: Request,
     file: UploadFile = File(..., description="CSV file"),
     dataset_name: Optional[str] = Form(default=None, description="Optional dataset name"),
     user: str = Depends(get_current_user),
@@ -53,6 +56,7 @@ async def upload_training_data(
     """Upload training data CSV file.
 
     Args:
+        request (Request): FastAPI request object.
         file (UploadFile): CSV file.
         dataset_name (Optional[str]): Dataset name.
         user (str): Current user.
@@ -104,15 +108,18 @@ async def upload_training_data(
 
 
 @router.post("/jobs", response_model=TrainingJobResponse)
+@limiter.limit(TRAINING_LIMIT)
 async def start_training(
-    request: TrainingJobRequest,
+    request: Request,
+    training_request: TrainingJobRequest,
     user: str = Depends(get_current_user),
     training_service: TrainingService = Depends(get_training_service),
 ):
     """Start a training job.
 
     Args:
-        request (TrainingJobRequest): Training job request.
+        request (Request): FastAPI request object.
+        training_request (TrainingJobRequest): Training job request.
         user (str): Current user.
         training_service (TrainingService): Training service.
 
@@ -122,7 +129,7 @@ async def start_training(
     Raises:
         InvalidInputError: If request validation fails.
     """
-    dataset_id = request.dataset_id
+    dataset_id = training_request.dataset_id
 
     storage = get_dataset_storage()
     df = storage.get(dataset_id)
@@ -132,16 +139,18 @@ async def start_training(
 
     try:
         n_trials_value = (
-            request.n_trials if (request.do_tune and request.n_trials is not None) else 20
+            training_request.n_trials
+            if (training_request.do_tune and training_request.n_trials is not None)
+            else 20
         )
         job_id = training_service.start_training_async(
             data=df,
-            config=request.config,
-            remove_outliers=request.remove_outliers,
-            do_tune=request.do_tune,
+            config=training_request.config,
+            remove_outliers=training_request.remove_outliers,
+            do_tune=training_request.do_tune,
             n_trials=n_trials_value,
-            additional_tag=request.additional_tag,
-            dataset_name=request.dataset_name or "Unknown",
+            additional_tag=training_request.additional_tag,
+            dataset_name=training_request.dataset_name or "Unknown",
         )
 
         return TrainingJobResponse(job_id=job_id, status="QUEUED")
@@ -150,7 +159,9 @@ async def start_training(
 
 
 @router.get("/jobs/{job_id}", response_model=TrainingJobStatusResponse)
+@limiter.limit(TRAINING_LIMIT)
 async def get_training_job_status(
+    request: Request,
     job_id: str,
     user: str = Depends(get_current_user),
     training_service: TrainingService = Depends(get_training_service),
@@ -158,6 +169,7 @@ async def get_training_job_status(
     """Get training job status.
 
     Args:
+        request (Request): FastAPI request object.
         job_id (str): Job identifier.
         user (str): Current user.
         training_service (TrainingService): Training service.
@@ -203,7 +215,9 @@ async def get_training_job_status(
 
 
 @router.get("/jobs", response_model=BaseResponse)
+@limiter.limit(TRAINING_LIMIT)
 async def list_training_jobs(
+    request: Request,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     status: Optional[str] = Query(default=None, description="Filter by status"),
@@ -213,6 +227,7 @@ async def list_training_jobs(
     """List training jobs.
 
     Args:
+        request (Request): FastAPI request object.
         limit (int): Maximum items.
         offset (int): Items to skip.
         status (Optional[str]): Status filter.

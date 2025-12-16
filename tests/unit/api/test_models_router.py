@@ -5,11 +5,28 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import Request
 
 from src.api.exceptions import ModelNotFoundError as APIModelNotFoundError
 from src.api.routers.models import get_model_details, get_model_schema, list_models
 from src.services.inference_service import InferenceService, ModelNotFoundError, ModelSchema
 from src.services.model_registry import ModelRegistry
+
+
+def create_mock_request(headers: dict = None) -> Request:
+    """Create a mock Request object for testing.
+
+    Args:
+        headers (dict): Optional headers dictionary.
+
+    Returns:
+        Request: Mock Request object.
+    """
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = headers or {}
+    mock_request.client = MagicMock()
+    mock_request.client.host = "127.0.0.1"
+    return mock_request
 
 
 class TestListModels:
@@ -37,8 +54,11 @@ class TestListModels:
             },
         ]
 
+        mock_request = create_mock_request()
+
         response = asyncio.run(
             list_models(
+                mock_request,
                 limit=50,
                 offset=0,
                 experiment_name="exp1",
@@ -63,8 +83,11 @@ class TestListModels:
             },
         ]
 
+        mock_request = create_mock_request()
+
         response = asyncio.run(
             list_models(
+                mock_request,
                 limit=50,
                 offset=0,
                 experiment_name=None,
@@ -111,9 +134,12 @@ class TestGetModelDetails:
             },
         ]
         mock_registry_class.return_value = mock_registry
+        mock_request = create_mock_request()
 
         response = asyncio.run(
-            get_model_details("test123", user="test_user", inference_service=inference_service)
+            get_model_details(
+                mock_request, "test123", user="test_user", inference_service=inference_service
+            )
         )
 
         assert response.run_id == "test123"
@@ -141,10 +167,13 @@ class TestGetModelDetails:
             },
         ]
         mock_registry_class.return_value = mock_registry
+        mock_request = create_mock_request()
 
         with pytest.raises(APIModelNotFoundError) as exc_info:
             asyncio.run(
-                get_model_details("test123", user="test_user", inference_service=inference_service)
+                get_model_details(
+                    mock_request, "test123", user="test_user", inference_service=inference_service
+                )
             )
 
         assert "test123" in str(exc_info.value.message)
@@ -153,11 +182,15 @@ class TestGetModelDetails:
         """Test ModelNotFoundError from inference service."""
         inference_service = MagicMock(spec=InferenceService)
         inference_service.load_model.side_effect = ModelNotFoundError("Model not found")
+        mock_request = create_mock_request()
 
         with pytest.raises(APIModelNotFoundError) as exc_info:
             asyncio.run(
                 get_model_details(
-                    "nonexistent", user="test_user", inference_service=inference_service
+                    mock_request,
+                    "nonexistent",
+                    user="test_user",
+                    inference_service=inference_service,
                 )
             )
 
@@ -183,9 +216,12 @@ class TestGetModelSchema:
         schema = ModelSchema(mock_model)
         inference_service.load_model.return_value = mock_model
         inference_service.get_model_schema.return_value = schema
+        mock_request = create_mock_request()
 
         response = asyncio.run(
-            get_model_schema("test123", user="test_user", inference_service=inference_service)
+            get_model_schema(
+                mock_request, "test123", user="test_user", inference_service=inference_service
+            )
         )
 
         assert response.run_id == "test123"
@@ -197,11 +233,15 @@ class TestGetModelSchema:
         """Test ModelNotFoundError raises APIModelNotFoundError."""
         inference_service = MagicMock(spec=InferenceService)
         inference_service.load_model.side_effect = ModelNotFoundError("Model not found")
+        mock_request = create_mock_request()
 
         with pytest.raises(APIModelNotFoundError) as exc_info:
             asyncio.run(
                 get_model_schema(
-                    "nonexistent", user="test_user", inference_service=inference_service
+                    mock_request,
+                    "nonexistent",
+                    user="test_user",
+                    inference_service=inference_service,
                 )
             )
 
@@ -219,9 +259,12 @@ class TestGetModelSchema:
         schema = ModelSchema(mock_model)
         inference_service.load_model.return_value = mock_model
         inference_service.get_model_schema.return_value = schema
+        mock_request = create_mock_request()
 
         response = asyncio.run(
-            get_model_schema("test123", user="test_user", inference_service=inference_service)
+            get_model_schema(
+                mock_request, "test123", user="test_user", inference_service=inference_service
+            )
         )
 
         assert len(response.model_schema.ranked_features) == 0

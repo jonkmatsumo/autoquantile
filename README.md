@@ -48,6 +48,117 @@ Requirements: Python 3.12
     export GEMINI_API_KEY=your_gemini_key_here  # Optional
     ```
 
+## Development Commands
+
+This project includes a `Makefile` with common development tasks. Run `make help` to see all available commands.
+
+### Quick Start
+```bash
+make setup          # Install dev dependencies and set up pre-commit hooks
+make test           # Run tests
+make check          # Run all checks (format, lint, type-check)
+```
+
+### Common Tasks
+
+**Testing:**
+```bash
+make test           # Run tests
+make test-cov       # Run tests with coverage report
+```
+
+**Code Quality:**
+```bash
+make format         # Format code with black and isort
+make format-check   # Check formatting without changes
+make lint           # Run linting checks
+make lint-fix       # Run linting and auto-fix issues
+make type-check     # Run type checking
+make check          # Run all checks (format, lint, type-check)
+make pre-commit     # Run all pre-commit hooks
+```
+
+**Security:**
+```bash
+make security       # Run security scanning (bandit and pip-audit)
+```
+
+**Cleanup:**
+```bash
+make clean          # Remove generated files and caches
+```
+
+**Running Applications:**
+```bash
+make run-api        # Run the FastAPI server
+make run-streamlit  # Run the Streamlit application
+```
+
+## Usage
+
+### Web Application (Streamlit)
+The easiest way to use the system is via the web interface:
+
+```bash
+streamlit run src/app/app.py
+```
+
+This launches a dashboard with training and inference pages:
+- **Training**: Upload CSV files, use AI-powered configuration wizard, train models with hyperparameter tuning
+- **Inference**: Select models, make predictions, view visualizations and feature importance
+
+### REST API
+
+Comprehensive REST API built with **FastAPI** for programmatic access. Features: model management, inference (single/batch), training jobs, configuration workflow, and analytics.
+
+**Start server:**
+```bash
+uvicorn src.api.app:create_app --factory --host 0.0.0.0 --port 8000
+```
+
+**Documentation**: `http://localhost:8000/docs` (Swagger UI) or `/redoc` (ReDoc)
+
+**Authentication** (optional):
+```bash
+export API_KEY=your_api_key_here
+```
+
+**Example:**
+```python
+import requests
+response = requests.get(
+    "http://localhost:8000/api/v1/models",
+    headers={"X-API-Key": "your_api_key"}
+)
+# Check rate limit headers
+print(response.headers.get("X-RateLimit-Remaining"))
+```
+
+All endpoints prefixed with `/api/v1`.
+
+### MCP Server (Model Context Protocol)
+
+Native **MCP** server implementation for agent-native interactions via JSON-RPC 2.0. Includes 11 tools for model operations, inference, training, configuration workflow, and analytics.
+
+**Endpoint**: `POST /mcp/rpc` (mounted as FastAPI sub-application)
+
+**Protocol**: JSON-RPC 2.0
+
+**Example request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "predict_salary",
+    "arguments": {"run_id": "abc123", "features": {"Level": "L5"}}
+  },
+  "id": 1
+}
+```
+
+**Tool discovery**: Use `{"method": "tools/list", "id": 1}` to list all available tools. Each tool includes semantic descriptions, JSON Schema definitions, and examples for LLM integration.
+
 ## Performance Monitoring
 
 The project includes comprehensive performance monitoring and profiling capabilities:
@@ -95,134 +206,3 @@ UI performance tracking is optional and disabled by default. To enable:
 ```bash
 export ENABLE_UI_PERFORMANCE_TRACKING=true
 ```
-
-## Development Commands
-
-This project includes a `Makefile` with common development tasks. Run `make help` to see all available commands.
-
-### Quick Start
-```bash
-make setup          # Install dev dependencies and set up pre-commit hooks
-make test           # Run tests
-make check          # Run all checks (format, lint, type-check)
-```
-
-### Common Tasks
-
-**Testing:**
-```bash
-make test           # Run tests
-make test-cov       # Run tests with coverage report
-```
-
-**Code Quality:**
-```bash
-make format         # Format code with black and isort
-make format-check   # Check formatting without changes
-make lint           # Run linting checks
-make lint-fix       # Run linting and auto-fix issues
-make type-check     # Run type checking
-make check          # Run all checks (format, lint, type-check)
-make pre-commit     # Run all pre-commit hooks
-```
-
-**Security:**
-```bash
-make security       # Run security scanning (bandit and pip-audit)
-```
-
-**Cleanup:**
-```bash
-make clean          # Remove generated files and caches
-```
-
-**Running Applications:**
-```bash
-make run-api        # Run the FastAPI server
-make run-streamlit  # Run the Streamlit application
-```
-
-### Manual Commands
-
-If you prefer not to use Make, you can run commands directly:
-
-```bash
-# Testing
-python3 -m pytest tests/
-
-# Type checking
-mypy src/
-
-# Code formatting
-black src tests
-isort src tests
-
-# Linting
-ruff check src tests
-
-# Pre-commit checks
-pre-commit run --all-files
-```
-
-## Usage
-
-### Web Application (Streamlit)
-The easiest way to use the system is via the web interface:
-
-```bash
-streamlit run src/app/app.py
-```
-
-This launches a dashboard with training and inference pages:
-- **Training**: Upload CSV files, use AI-powered configuration wizard, train models with hyperparameter tuning
-- **Inference**: Select models, make predictions, view visualizations and feature importance
-
-### REST API
-
-Comprehensive REST API built with **FastAPI** for programmatic access. Features: model management, inference (single/batch), training jobs, configuration workflow, and analytics.
-
-**Start server:**
-```bash
-uvicorn src.api.app:create_app --factory --host 0.0.0.0 --port 8000
-```
-
-**Documentation**: `http://localhost:8000/docs` (Swagger UI) or `/redoc` (ReDoc)
-
-**Authentication** (optional):
-```bash
-export API_KEY=your_api_key_here
-```
-
-**Example:**
-```python
-import requests
-response = requests.get(
-    "http://localhost:8000/api/v1/models",
-    headers={"X-API-Key": "your_api_key"}
-)
-```
-
-All endpoints prefixed with `/api/v1`.
-
-### MCP Server (Model Context Protocol)
-
-Native **MCP** server implementation for agent-native interactions via JSON-RPC 2.0. Includes 11 tools for model operations, inference, training, configuration workflow, and analytics.
-
-**Endpoint**: `POST /mcp/rpc` (mounted as FastAPI sub-application)
-
-**Protocol**: JSON-RPC 2.0
-
-**Example request:**
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "tools/call",
-  "params": {
-    "name": "predict_salary",
-    "arguments": {"run_id": "abc123", "features": {"Level": "L5"}}
-  },
-  "id": 1
-}
-```
-
-**Tool discovery**: Use `{"method": "tools/list", "id": 1}` to list all available tools. Each tool includes semantic descriptions, JSON Schema definitions, and examples for LLM integration.

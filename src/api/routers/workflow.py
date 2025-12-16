@@ -3,7 +3,7 @@
 import uuid
 from typing import Dict, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from src.api.dependencies import get_current_user
 from src.api.dto.workflow import (
@@ -17,6 +17,7 @@ from src.api.dto.workflow import (
     WorkflowStateResponse,
 )
 from src.api.exceptions import WorkflowNotFoundError
+from src.api.rate_limiting import WORKFLOW_LIMIT, limiter
 from src.services.workflow_service import WorkflowService
 from src.utils.logger import get_logger
 
@@ -40,14 +41,17 @@ def get_workflow_service(workflow_id: str) -> Optional[WorkflowService]:
 
 
 @router.post("/start", response_model=WorkflowStartResponse)
+@limiter.limit(WORKFLOW_LIMIT)
 async def start_workflow(
-    request: WorkflowStartRequest,
+    request: Request,
+    workflow_start_request: WorkflowStartRequest,
     user: str = Depends(get_current_user),
 ):
     """Start a configuration workflow.
 
     Args:
-        request (WorkflowStartRequest): Workflow start request.
+        request (Request): FastAPI request object.
+        workflow_start_request (WorkflowStartRequest): Workflow start request.
         user (str): Current user.
 
     Returns:
@@ -61,12 +65,12 @@ async def start_workflow(
     import pandas as pd
 
     workflow_id = str(uuid.uuid4())
-    service = WorkflowService(provider=request.provider)
+    service = WorkflowService(provider=workflow_start_request.provider)
 
-    df_json = request.data
+    df_json = workflow_start_request.data
     df = pd.read_json(StringIO(df_json), orient="records")
 
-    result = service.start_workflow(df, sample_size=50, preset=request.preset)
+    result = service.start_workflow(df, sample_size=50, preset=workflow_start_request.preset)
 
     if result.get("status") == "error":
         from src.api.exceptions import InvalidInputError
@@ -92,13 +96,16 @@ async def start_workflow(
 
 
 @router.get("/{workflow_id}", response_model=WorkflowStateResponse)
+@limiter.limit(WORKFLOW_LIMIT)
 async def get_workflow_state(
+    request: Request,
     workflow_id: str,
     user: str = Depends(get_current_user),
 ):
     """Get workflow state.
 
     Args:
+        request (Request): FastAPI request object.
         workflow_id (str): Workflow identifier.
         user (str): Current user.
 
@@ -124,16 +131,19 @@ async def get_workflow_state(
 
 
 @router.post("/{workflow_id}/confirm/classification", response_model=WorkflowProgressResponse)
+@limiter.limit(WORKFLOW_LIMIT)
 async def confirm_classification(
+    request: Request,
     workflow_id: str,
-    request: ClassificationConfirmationRequest,
+    classification_request: ClassificationConfirmationRequest,
     user: str = Depends(get_current_user),
 ):
     """Confirm classification phase.
 
     Args:
+        request (Request): FastAPI request object.
         workflow_id (str): Workflow identifier.
-        request (ClassificationConfirmationRequest): Classification confirmation.
+        classification_request (ClassificationConfirmationRequest): Classification confirmation.
         user (str): Current user.
 
     Returns:
@@ -149,9 +159,9 @@ async def confirm_classification(
         raise WorkflowNotFoundError(workflow_id)
 
     modifications = {
-        "targets": request.modifications.targets,
-        "features": request.modifications.features,
-        "ignore": request.modifications.ignore,
+        "targets": classification_request.modifications.targets,
+        "features": classification_request.modifications.features,
+        "ignore": classification_request.modifications.ignore,
     }
 
     result = service.confirm_classification(modifications)
@@ -170,16 +180,19 @@ async def confirm_classification(
 
 
 @router.post("/{workflow_id}/confirm/encoding", response_model=WorkflowProgressResponse)
+@limiter.limit(WORKFLOW_LIMIT)
 async def confirm_encoding(
+    request: Request,
     workflow_id: str,
-    request: EncodingConfirmationRequest,
+    encoding_request: EncodingConfirmationRequest,
     user: str = Depends(get_current_user),
 ):
     """Confirm encoding phase.
 
     Args:
+        request (Request): FastAPI request object.
         workflow_id (str): Workflow identifier.
-        request (EncodingConfirmationRequest): Encoding confirmation.
+        encoding_request (EncodingConfirmationRequest): Encoding confirmation.
         user (str): Current user.
 
     Returns:
@@ -195,7 +208,7 @@ async def confirm_encoding(
         raise WorkflowNotFoundError(workflow_id)
 
     encodings = {}
-    for col, enc_config in request.modifications.encodings.items():
+    for col, enc_config in encoding_request.modifications.encodings.items():
         encodings[col] = {
             "type": enc_config.type,
             "mapping": enc_config.mapping or {},
@@ -203,7 +216,7 @@ async def confirm_encoding(
         }
 
     optional_encodings = {}
-    for col, opt_enc_config in request.modifications.optional_encodings.items():
+    for col, opt_enc_config in encoding_request.modifications.optional_encodings.items():
         optional_encodings[col] = {
             "type": opt_enc_config.type,
             "params": opt_enc_config.params,
@@ -230,16 +243,19 @@ async def confirm_encoding(
 
 
 @router.post("/{workflow_id}/finalize", response_model=WorkflowCompleteResponse)
+@limiter.limit(WORKFLOW_LIMIT)
 async def finalize_configuration(
+    request: Request,
     workflow_id: str,
-    request: ConfigurationFinalizationRequest,
+    finalization_request: ConfigurationFinalizationRequest,
     user: str = Depends(get_current_user),
 ):
     """Finalize configuration.
 
     Args:
+        request (Request): FastAPI request object.
         workflow_id (str): Workflow identifier.
-        request (ConfigurationFinalizationRequest): Finalization request.
+        finalization_request (ConfigurationFinalizationRequest): Finalization request.
         user (str): Current user.
 
     Returns:
@@ -264,16 +280,17 @@ async def finalize_configuration(
         )
 
     final_config["model"]["features"] = [
-        {"name": f.name, "monotone_constraint": f.monotone_constraint} for f in request.features
+        {"name": f.name, "monotone_constraint": f.monotone_constraint}
+        for f in finalization_request.features
     ]
-    final_config["model"]["quantiles"] = request.quantiles
+    final_config["model"]["quantiles"] = finalization_request.quantiles
     final_config["model"]["hyperparameters"] = {
-        "training": request.hyperparameters.training,
-        "cv": request.hyperparameters.cv,
+        "training": finalization_request.hyperparameters.training,
+        "cv": finalization_request.hyperparameters.cv,
     }
 
-    if request.location_settings:
-        final_config["location_settings"] = request.location_settings
+    if finalization_request.location_settings:
+        final_config["location_settings"] = finalization_request.location_settings
 
     return WorkflowCompleteResponse(
         workflow_id=workflow_id,

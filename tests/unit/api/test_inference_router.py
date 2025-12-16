@@ -5,16 +5,31 @@ from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import Request
 
 from src.api.dto.inference import BatchPredictionRequest, PredictionRequest
-from src.api.exceptions import InvalidInputError, ModelNotFoundError as APIModelNotFoundError
+from src.api.exceptions import InvalidInputError
+from src.api.exceptions import ModelNotFoundError as APIModelNotFoundError
 from src.api.routers.inference import predict, predict_batch
-from src.services.inference_service import (
-    InferenceService,
-    InvalidInputError as ServiceInvalidInputError,
-    ModelNotFoundError,
-    PredictionResult,
-)
+from src.services.inference_service import InferenceService
+from src.services.inference_service import InvalidInputError as ServiceInvalidInputError
+from src.services.inference_service import ModelNotFoundError, PredictionResult
+
+
+def create_mock_request(headers: dict = None) -> Request:
+    """Create a mock Request object for testing.
+
+    Args:
+        headers (dict): Optional headers dictionary.
+
+    Returns:
+        Request: Mock Request object.
+    """
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = headers or {}
+    mock_request.client = MagicMock()
+    mock_request.client.host = "127.0.0.1"
+    return mock_request
 
 
 class TestPredict:
@@ -25,12 +40,17 @@ class TestPredict:
         inference_service = MagicMock(spec=InferenceService)
         inference_service.load_model.side_effect = ModelNotFoundError("Model not found")
 
-        request = PredictionRequest(features={"Level": "L4"})
+        mock_request = create_mock_request()
+        prediction_request = PredictionRequest(features={"Level": "L4"})
 
         with pytest.raises(APIModelNotFoundError) as exc_info:
             asyncio.run(
                 predict(
-                    "nonexistent", request, user="test_user", inference_service=inference_service
+                    mock_request,
+                    "nonexistent",
+                    prediction_request,
+                    user="test_user",
+                    inference_service=inference_service,
                 )
             )
 
@@ -44,11 +64,18 @@ class TestPredict:
         inference_service.load_model.return_value = mock_model
         inference_service.predict.side_effect = ServiceInvalidInputError("Invalid features")
 
-        request = PredictionRequest(features={"Level": "L4"})
+        mock_request = create_mock_request()
+        prediction_request = PredictionRequest(features={"Level": "L4"})
 
         with pytest.raises(InvalidInputError) as exc_info:
             asyncio.run(
-                predict("test123", request, user="test_user", inference_service=inference_service)
+                predict(
+                    mock_request,
+                    "test123",
+                    prediction_request,
+                    user="test_user",
+                    inference_service=inference_service,
+                )
             )
 
         assert "Invalid features" in str(exc_info.value.message)
@@ -64,10 +91,17 @@ class TestPredict:
             metadata={"location_zone": "Zone1"},
         )
 
-        request = PredictionRequest(features={"Level": "L4", "YearsOfExperience": 5})
+        mock_request = create_mock_request()
+        prediction_request = PredictionRequest(features={"Level": "L4", "YearsOfExperience": 5})
 
         response = asyncio.run(
-            predict("test123", request, user="test_user", inference_service=inference_service)
+            predict(
+                mock_request,
+                "test123",
+                prediction_request,
+                user="test_user",
+                inference_service=inference_service,
+            )
         )
 
         assert response.predictions == {"BaseSalary": {"p50": 150000.0}}
@@ -90,7 +124,8 @@ class TestPredictBatch:
             PredictionResult(predictions={"BaseSalary": {"p50": 120000.0}}, metadata={}),
         ]
 
-        request = BatchPredictionRequest(
+        mock_request = create_mock_request()
+        batch_request = BatchPredictionRequest(
             features=[
                 {"Level": "L3"},
                 {"Level": "L4"},
@@ -99,7 +134,13 @@ class TestPredictBatch:
         )
 
         response = asyncio.run(
-            predict_batch("test123", request, user="test_user", inference_service=inference_service)
+            predict_batch(
+                mock_request,
+                "test123",
+                batch_request,
+                user="test_user",
+                inference_service=inference_service,
+            )
         )
 
         assert len(response.predictions) == 3
@@ -113,12 +154,17 @@ class TestPredictBatch:
         inference_service = MagicMock(spec=InferenceService)
         inference_service.load_model.side_effect = ModelNotFoundError("Model not found")
 
-        request = BatchPredictionRequest(features=[{"Level": "L4"}])
+        mock_request = create_mock_request()
+        batch_request = BatchPredictionRequest(features=[{"Level": "L4"}])
 
         with pytest.raises(APIModelNotFoundError) as exc_info:
             asyncio.run(
                 predict_batch(
-                    "nonexistent", request, user="test_user", inference_service=inference_service
+                    mock_request,
+                    "nonexistent",
+                    batch_request,
+                    user="test_user",
+                    inference_service=inference_service,
                 )
             )
 
@@ -131,12 +177,17 @@ class TestPredictBatch:
         inference_service.load_model.return_value = mock_model
         inference_service.predict.side_effect = ServiceInvalidInputError("Invalid features")
 
-        request = BatchPredictionRequest(features=[{"Level": "L4"}])
+        mock_request = create_mock_request()
+        batch_request = BatchPredictionRequest(features=[{"Level": "L4"}])
 
         with pytest.raises(InvalidInputError) as exc_info:
             asyncio.run(
                 predict_batch(
-                    "test123", request, user="test_user", inference_service=inference_service
+                    mock_request,
+                    "test123",
+                    batch_request,
+                    user="test_user",
+                    inference_service=inference_service,
                 )
             )
 
@@ -152,10 +203,17 @@ class TestPredictBatch:
             metadata={},
         )
 
-        request = BatchPredictionRequest(features=[{"Level": "L4"}])
+        mock_request = create_mock_request()
+        batch_request = BatchPredictionRequest(features=[{"Level": "L4"}])
 
         response = asyncio.run(
-            predict_batch("test123", request, user="test_user", inference_service=inference_service)
+            predict_batch(
+                mock_request,
+                "test123",
+                batch_request,
+                user="test_user",
+                inference_service=inference_service,
+            )
         )
 
         assert len(response.predictions) == 1
@@ -171,7 +229,8 @@ class TestPredictBatch:
             metadata={"location_zone": "Zone2"},
         )
 
-        request = BatchPredictionRequest(
+        mock_request = create_mock_request()
+        batch_request = BatchPredictionRequest(
             features=[
                 {"Level": "L4"},
                 {"Level": "L5"},
@@ -179,7 +238,13 @@ class TestPredictBatch:
         )
 
         response = asyncio.run(
-            predict_batch("test123", request, user="test_user", inference_service=inference_service)
+            predict_batch(
+                mock_request,
+                "test123",
+                batch_request,
+                user="test_user",
+                inference_service=inference_service,
+            )
         )
 
         assert len(response.predictions) == 2
