@@ -114,18 +114,10 @@ def create_app() -> FastAPI:
             ).model_dump(),
         )
 
-    @app.get("/health")
-    async def health_check():
-        """Health check endpoint.
-
-        Returns:
-            dict: Health status.
-        """
-        return {"status": "healthy"}
-
     from src.api.mcp.server import register_mcp_tools
-    from src.api.routers import analytics, inference, models, training, workflow
+    from src.api.routers import analytics, health, inference, models, training, workflow
 
+    app.include_router(health.router)
     app.include_router(models.router)
     app.include_router(inference.router)
     app.include_router(training.router)
