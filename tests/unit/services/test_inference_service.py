@@ -241,3 +241,136 @@ class TestInferenceService(unittest.TestCase):
         self.assertEqual(formatted[0]["p10"], 120000.0)
         self.assertEqual(formatted[0]["p50"], 150000.0)
         self.assertEqual(formatted[0]["p90"], 180000.0)
+
+    def test_predict_batch_parallel_success(self):
+        """Test parallel batch prediction with all successes."""
+        from src.services.inference_service import PredictionResult
+
+        mock_model = MagicMock()
+        mock_model.ranked_encoders = {"Level": MagicMock(mapping={"L4": 1})}
+        mock_model.proximity_encoders = {}
+        mock_model.feature_names = ["Level_Enc", "YearsOfExperience"]
+        mock_model.targets = ["BaseSalary"]
+        mock_model.quantiles = [0.5]
+        mock_model.predict.return_value = {"BaseSalary": {"p50": pd.Series([150000.0])}}
+
+        features_list = [
+            {"Level": "L4", "YearsOfExperience": 5},
+            {"Level": "L4", "YearsOfExperience": 6},
+            {"Level": "L4", "YearsOfExperience": 7},
+        ]
+
+        results = self.service.predict_batch_parallel(mock_model, features_list, concurrency=2)
+
+        self.assertEqual(len(results), 3)
+        for index, result in results:
+            self.assertIsInstance(result, PredictionResult)
+            self.assertIn("BaseSalary", result.predictions)
+            self.assertEqual(result.predictions["BaseSalary"]["p50"], 150000.0)
+
+    def test_predict_batch_parallel_partial_failures(self):
+        """Test parallel batch prediction with partial failures."""
+        from src.services.inference_service import PredictionResult
+
+        mock_model = MagicMock()
+        mock_model.ranked_encoders = {"Level": MagicMock(mapping={"L4": 1})}
+        mock_model.proximity_encoders = {}
+        mock_model.feature_names = ["Level_Enc", "YearsOfExperience"]
+        mock_model.targets = ["BaseSalary"]
+        mock_model.quantiles = [0.5]
+
+        def mock_predict(df):
+            if df.iloc[0]["YearsOfExperience"] == 6:
+                raise InvalidInputError("Invalid features")
+            return {"BaseSalary": {"p50": pd.Series([150000.0])}}
+
+        mock_model.predict.side_effect = mock_predict
+
+        features_list = [
+            {"Level": "L4", "YearsOfExperience": 5},
+            {"Level": "L4", "YearsOfExperience": 6},
+            {"Level": "L4", "YearsOfExperience": 7},
+        ]
+
+        results = self.service.predict_batch_parallel(mock_model, features_list, concurrency=2)
+
+        self.assertEqual(len(results), 3)
+        success_count = sum(1 for _, result in results if isinstance(result, PredictionResult))
+        failure_count = sum(1 for _, result in results if isinstance(result, Exception))
+        self.assertEqual(success_count, 2)
+        self.assertEqual(failure_count, 1)
+
+    def test_predict_batch_parallel_all_failures(self):
+        """Test parallel batch prediction with all failures."""
+        mock_model = MagicMock()
+        mock_model.ranked_encoders = {"Level": MagicMock()}
+        mock_model.proximity_encoders = {}
+        mock_model.feature_names = ["Level_Enc"]
+        mock_model.targets = ["BaseSalary"]
+        mock_model.quantiles = [0.5]
+
+        features_list = [
+            {},
+            {},
+            {},
+        ]
+
+        results = self.service.predict_batch_parallel(mock_model, features_list, concurrency=2)
+
+        self.assertEqual(len(results), 3)
+        for index, result in results:
+            self.assertIsInstance(result, Exception)
+            self.assertIsInstance(result, InvalidInputError)
+
+    def test_predict_batch_parallel_concurrency_limit(self):
+        """Test parallel batch prediction respects concurrency limit."""
+        from src.services.inference_service import PredictionResult
+
+        mock_model = MagicMock()
+        mock_model.ranked_encoders = {"Level": MagicMock(mapping={"L4": 1})}
+        mock_model.proximity_encoders = {}
+        mock_model.feature_names = ["Level_Enc", "YearsOfExperience"]
+        mock_model.targets = ["BaseSalary"]
+        mock_model.quantiles = [0.5]
+        mock_model.predict.return_value = {"BaseSalary": {"p50": pd.Series([150000.0])}}
+
+        features_list = [{"Level": "L4", "YearsOfExperience": i} for i in range(10)]
+
+        results = self.service.predict_batch_parallel(mock_model, features_list, concurrency=3)
+
+        self.assertEqual(len(results), 10)
+        for index, result in results:
+            self.assertIsInstance(result, PredictionResult)
+
+    def test_predict_batch_parallel_empty_list(self):
+        """Test parallel batch prediction with empty feature list."""
+        mock_model = MagicMock()
+
+        results = self.service.predict_batch_parallel(mock_model, [], concurrency=2)
+
+        self.assertEqual(len(results), 0)
+
+    def test_predict_batch_parallel_timeout(self):
+        """Test parallel batch prediction with timeout."""
+        import time
+
+        mock_model = MagicMock()
+        mock_model.ranked_encoders = {"Level": MagicMock(mapping={"L4": 1})}
+        mock_model.proximity_encoders = {}
+        mock_model.feature_names = ["Level_Enc", "YearsOfExperience"]
+        mock_model.targets = ["BaseSalary"]
+        mock_model.quantiles = [0.5]
+
+        def slow_predict(df):
+            time.sleep(0.1)
+            return {"BaseSalary": {"p50": pd.Series([150000.0])}}
+
+        mock_model.predict.side_effect = slow_predict
+
+        features_list = [{"Level": "L4", "YearsOfExperience": i} for i in range(5)]
+
+        results = self.service.predict_batch_parallel(
+            mock_model, features_list, concurrency=2, timeout=1
+        )
+
+        self.assertEqual(len(results), 5)

@@ -49,13 +49,18 @@ class TestGeoMapperCaching:
             assert mock_geolocator.geocode.call_count == 0
 
     def test_no_file_io_operations(self, mock_config: dict) -> None:
-        """Test that no file I/O operations are performed."""
+        """Test that no file I/O operations are performed by GeoMapper."""
         with (
             patch("src.utils.geo_utils.Nominatim") as mock_nominatim,
+            patch("src.utils.geo_utils.get_cache_manager") as mock_get_cache,
             patch("builtins.open") as mock_open,
             patch("os.path.exists") as mock_exists,
             patch("os.makedirs") as mock_makedirs,
         ):
+            mock_cache = MagicMock()
+            mock_cache.get.return_value = None
+            mock_get_cache.return_value = mock_cache
+
             mock_geolocator = MagicMock()
             mock_nominatim.return_value = mock_geolocator
 

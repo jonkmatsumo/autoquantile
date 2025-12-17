@@ -388,7 +388,35 @@ class TestAPIClientPredictBatch:
                     },
                 },
             ],
+            "items": [
+                {
+                    "prediction": {
+                        "predictions": {"target1": {"p50": 100000.0}},
+                        "metadata": {
+                            "model_run_id": "run1",
+                            "prediction_timestamp": "2023-01-01T00:00:00",
+                        },
+                    },
+                    "status_code": 200,
+                    "error": None,
+                    "index": 0,
+                },
+                {
+                    "prediction": {
+                        "predictions": {"target1": {"p50": 110000.0}},
+                        "metadata": {
+                            "model_run_id": "run1",
+                            "prediction_timestamp": "2023-01-01T00:00:00",
+                        },
+                    },
+                    "status_code": 200,
+                    "error": None,
+                    "index": 1,
+                },
+            ],
             "total": 2,
+            "success_count": 2,
+            "failure_count": 0,
         }
         client._request = MagicMock(return_value=mock_response_data)
 

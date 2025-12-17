@@ -22,6 +22,10 @@ ANALYTICS_LIMIT = get_env_var("RATE_LIMIT_ANALYTICS", "50/minute") or "50/minute
 MODELS_LIMIT = get_env_var("RATE_LIMIT_MODELS", "50/minute") or "50/minute"
 WORKFLOW_LIMIT = get_env_var("RATE_LIMIT_WORKFLOW", "20/minute") or "20/minute"
 
+BATCH_INFERENCE_CONCURRENCY = int(get_env_var("BATCH_INFERENCE_CONCURRENCY", "10") or "10")
+BATCH_INFERENCE_MAX_SIZE = int(get_env_var("BATCH_INFERENCE_MAX_SIZE", "1000") or "1000")
+BATCH_INFERENCE_TIMEOUT = int(get_env_var("BATCH_INFERENCE_TIMEOUT", "300") or "300")
+
 
 def get_rate_limit_key(request: Request) -> str:
     """Get rate limit key from request (API key or IP address).

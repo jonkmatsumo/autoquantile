@@ -1,6 +1,9 @@
 """Inference service for model predictions and validation."""
 
-from typing import Any, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
+from concurrent.futures import as_completed
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 
@@ -248,3 +251,90 @@ class InferenceService:
             row.update(preds)
             formatted.append(row)
         return formatted
+
+    def predict_batch_parallel(
+        self,
+        model: SalaryForecaster,
+        features_list: List[Dict[str, Any]],
+        concurrency: int = 10,
+        timeout: Optional[int] = None,
+    ) -> List[Tuple[int, Union[PredictionResult, Exception]]]:
+        """Execute batch predictions in parallel.
+
+        Args:
+            model (SalaryForecaster): Model instance.
+            features_list (List[Dict[str, Any]]): List of feature dictionaries.
+            concurrency (int): Maximum number of concurrent predictions.
+            timeout (Optional[int]): Timeout in seconds for entire batch.
+
+        Returns:
+            List[Tuple[int, Union[PredictionResult, Exception]]]: List of (index, result) tuples.
+        """
+        results: List[Optional[Tuple[int, Union[PredictionResult, Exception]]]] = [None] * len(
+            features_list
+        )
+
+        def predict_single(
+            index: int, features: Dict[str, Any]
+        ) -> Tuple[int, Union[PredictionResult, Exception]]:
+            """Predict single item.
+
+            Args:
+                index (int): Item index.
+                features (Dict[str, Any]): Feature dictionary.
+
+            Returns:
+                Tuple[int, Union[PredictionResult, Exception]]: Result tuple.
+            """
+            try:
+                result = self.predict(model, features)
+                return (index, result)
+            except Exception as e:
+                self.logger.error(f"Prediction failed for item {index}: {e}", exc_info=True)
+                return (index, e)
+
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            future_to_index = {
+                executor.submit(predict_single, index, features): index
+                for index, features in enumerate(features_list)
+            }
+
+            try:
+                if timeout:
+                    for future in as_completed(future_to_index, timeout=timeout):
+                        index = future_to_index[future]
+                        try:
+                            results[index] = future.result(timeout=1)
+                        except Exception as e:
+                            self.logger.error(
+                                f"Unexpected error for item {index}: {e}", exc_info=True
+                            )
+                            results[index] = (index, e)
+                else:
+                    for future in as_completed(future_to_index):
+                        index = future_to_index[future]
+                        try:
+                            results[index] = future.result()
+                        except Exception as e:
+                            self.logger.error(
+                                f"Unexpected error for item {index}: {e}", exc_info=True
+                            )
+                            results[index] = (index, e)
+            except FutureTimeoutError:
+                for future, index in future_to_index.items():
+                    if not future.done():
+                        error = InvalidInputError(f"Prediction timeout for item {index}")
+                        self.logger.warning(f"Prediction timeout for item {index}")
+                        results[index] = (index, error)
+                        future.cancel()
+
+        final_results: List[Tuple[int, Union[PredictionResult, Exception]]] = []
+        for i, result in enumerate(results):
+            if result is None:
+                error = InvalidInputError(f"Prediction not completed for item {i}")
+                self.logger.warning(f"Prediction not completed for item {i}")
+                final_results.append((i, error))
+            else:
+                final_results.append(result)
+
+        return final_results

@@ -1,11 +1,25 @@
 """Data Transfer Objects (DTOs) for API requests and responses."""
 
+from src.api.dto.analytics import (
+    DataSummaryRequest,
+    DataSummaryResponse,
+    FeatureImportance,
+    FeatureImportanceResponse,
+)
 from src.api.dto.common import (
     BaseResponse,
     ErrorDetail,
     ErrorResponse,
     PaginationParams,
     PaginationResponse,
+)
+from src.api.dto.inference import (
+    BatchPredictionItem,
+    BatchPredictionRequest,
+    BatchPredictionResponse,
+    PredictionMetadata,
+    PredictionRequest,
+    PredictionResponse,
 )
 from src.api.dto.models import (
     ModelDetailsResponse,
@@ -14,13 +28,6 @@ from src.api.dto.models import (
     ModelSchemaResponse,
     ProximityFeatureSchema,
     RankedFeatureSchema,
-)
-from src.api.dto.inference import (
-    BatchPredictionRequest,
-    BatchPredictionResponse,
-    PredictionMetadata,
-    PredictionRequest,
-    PredictionResponse,
 )
 from src.api.dto.training import (
     DataUploadResponse,
@@ -41,12 +48,6 @@ from src.api.dto.workflow import (
     WorkflowStartResponse,
     WorkflowStateResponse,
 )
-from src.api.dto.analytics import (
-    DataSummaryRequest,
-    DataSummaryResponse,
-    FeatureImportance,
-    FeatureImportanceResponse,
-)
 
 __all__ = [
     # Common
@@ -66,6 +67,7 @@ __all__ = [
     "PredictionRequest",
     "PredictionResponse",
     "PredictionMetadata",
+    "BatchPredictionItem",
     "BatchPredictionRequest",
     "BatchPredictionResponse",
     # Training

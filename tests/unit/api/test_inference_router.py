@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi import Request
+from pydantic import ValidationError
 
 from src.api.dto.inference import BatchPredictionRequest, PredictionRequest
 from src.api.exceptions import InvalidInputError
@@ -118,10 +119,10 @@ class TestPredictBatch:
         mock_model = MagicMock()
         inference_service = MagicMock(spec=InferenceService)
         inference_service.load_model.return_value = mock_model
-        inference_service.predict.side_effect = [
-            PredictionResult(predictions={"BaseSalary": {"p50": 100000.0}}, metadata={}),
-            PredictionResult(predictions={"BaseSalary": {"p50": 110000.0}}, metadata={}),
-            PredictionResult(predictions={"BaseSalary": {"p50": 120000.0}}, metadata={}),
+        inference_service.predict_batch_parallel.return_value = [
+            (0, PredictionResult(predictions={"BaseSalary": {"p50": 100000.0}}, metadata={})),
+            (1, PredictionResult(predictions={"BaseSalary": {"p50": 110000.0}}, metadata={})),
+            (2, PredictionResult(predictions={"BaseSalary": {"p50": 120000.0}}, metadata={})),
         ]
 
         mock_request = create_mock_request()
@@ -144,10 +145,14 @@ class TestPredictBatch:
         )
 
         assert len(response.predictions) == 3
+        assert len(response.items) == 3
         assert response.total == 3
+        assert response.success_count == 3
+        assert response.failure_count == 0
         assert response.predictions[0].predictions == {"BaseSalary": {"p50": 100000.0}}
         assert response.predictions[1].predictions == {"BaseSalary": {"p50": 110000.0}}
         assert response.predictions[2].predictions == {"BaseSalary": {"p50": 120000.0}}
+        assert all(item.status_code == 200 for item in response.items)
 
     def test_predict_batch_model_not_found(self):
         """Test batch prediction with ModelNotFoundError."""
@@ -171,37 +176,43 @@ class TestPredictBatch:
         assert "nonexistent" in str(exc_info.value.message)
 
     def test_predict_batch_service_invalid_input_error(self):
-        """Test batch prediction with ServiceInvalidInputError."""
+        """Test batch prediction with ServiceInvalidInputError in parallel processing."""
         mock_model = MagicMock()
         inference_service = MagicMock(spec=InferenceService)
         inference_service.load_model.return_value = mock_model
-        inference_service.predict.side_effect = ServiceInvalidInputError("Invalid features")
+        inference_service.predict_batch_parallel.return_value = [
+            (0, ServiceInvalidInputError("Invalid features")),
+        ]
 
         mock_request = create_mock_request()
         batch_request = BatchPredictionRequest(features=[{"Level": "L4"}])
 
-        with pytest.raises(InvalidInputError) as exc_info:
-            asyncio.run(
-                predict_batch(
-                    mock_request,
-                    "test123",
-                    batch_request,
-                    user="test_user",
-                    inference_service=inference_service,
-                )
+        response = asyncio.run(
+            predict_batch(
+                mock_request,
+                "test123",
+                batch_request,
+                user="test_user",
+                inference_service=inference_service,
             )
+        )
 
-        assert "Invalid features" in str(exc_info.value.message)
+        assert response.total == 1
+        assert response.success_count == 0
+        assert response.failure_count == 1
+        assert len(response.items) == 1
+        assert response.items[0].status_code == 400
+        assert response.items[0].error == "Invalid features"
+        assert response.items[0].prediction is None
 
     def test_predict_batch_single_feature(self):
         """Test batch prediction with single feature set."""
         mock_model = MagicMock()
         inference_service = MagicMock(spec=InferenceService)
         inference_service.load_model.return_value = mock_model
-        inference_service.predict.return_value = PredictionResult(
-            predictions={"BaseSalary": {"p50": 100000.0}},
-            metadata={},
-        )
+        inference_service.predict_batch_parallel.return_value = [
+            (0, PredictionResult(predictions={"BaseSalary": {"p50": 100000.0}}, metadata={})),
+        ]
 
         mock_request = create_mock_request()
         batch_request = BatchPredictionRequest(features=[{"Level": "L4"}])
@@ -217,17 +228,32 @@ class TestPredictBatch:
         )
 
         assert len(response.predictions) == 1
+        assert len(response.items) == 1
         assert response.total == 1
+        assert response.success_count == 1
+        assert response.failure_count == 0
 
     def test_predict_batch_with_metadata(self):
         """Test batch prediction includes correct metadata."""
         mock_model = MagicMock()
         inference_service = MagicMock(spec=InferenceService)
         inference_service.load_model.return_value = mock_model
-        inference_service.predict.return_value = PredictionResult(
-            predictions={"BaseSalary": {"p50": 150000.0}},
-            metadata={"location_zone": "Zone2"},
-        )
+        inference_service.predict_batch_parallel.return_value = [
+            (
+                0,
+                PredictionResult(
+                    predictions={"BaseSalary": {"p50": 150000.0}},
+                    metadata={"location_zone": "Zone2"},
+                ),
+            ),
+            (
+                1,
+                PredictionResult(
+                    predictions={"BaseSalary": {"p50": 160000.0}},
+                    metadata={"location_zone": "Zone2"},
+                ),
+            ),
+        ]
 
         mock_request = create_mock_request()
         batch_request = BatchPredictionRequest(
@@ -248,6 +274,121 @@ class TestPredictBatch:
         )
 
         assert len(response.predictions) == 2
+        assert len(response.items) == 2
         assert response.predictions[0].metadata.model_run_id == "test123"
         assert response.predictions[0].metadata.location_zone == "Zone2"
         assert response.predictions[1].metadata.model_run_id == "test123"
+
+    def test_predict_batch_partial_failures(self):
+        """Test batch prediction with partial failures."""
+        mock_model = MagicMock()
+        inference_service = MagicMock(spec=InferenceService)
+        inference_service.load_model.return_value = mock_model
+        inference_service.predict_batch_parallel.return_value = [
+            (0, PredictionResult(predictions={"BaseSalary": {"p50": 100000.0}}, metadata={})),
+            (1, ServiceInvalidInputError("Invalid features")),
+            (2, PredictionResult(predictions={"BaseSalary": {"p50": 120000.0}}, metadata={})),
+        ]
+
+        mock_request = create_mock_request()
+        batch_request = BatchPredictionRequest(
+            features=[
+                {"Level": "L3"},
+                {"Level": "L4"},
+                {"Level": "L5"},
+            ]
+        )
+
+        response = asyncio.run(
+            predict_batch(
+                mock_request,
+                "test123",
+                batch_request,
+                user="test_user",
+                inference_service=inference_service,
+            )
+        )
+
+        assert response.total == 3
+        assert response.success_count == 2
+        assert response.failure_count == 1
+        assert len(response.predictions) == 2
+        assert len(response.items) == 3
+        assert response.items[0].status_code == 200
+        assert response.items[1].status_code == 400
+        assert response.items[2].status_code == 200
+
+    def test_predict_batch_batch_size_limit(self):
+        """Test batch prediction with batch size exceeding limit."""
+        from src.api.rate_limiting import BATCH_INFERENCE_MAX_SIZE
+
+        with pytest.raises(ValidationError) as exc_info:
+            BatchPredictionRequest(features=[{"Level": "L4"}] * (BATCH_INFERENCE_MAX_SIZE + 1))
+
+        errors = exc_info.value.errors()
+        assert len(errors) > 0
+        assert any("too_long" in str(error.get("type", "")) for error in errors)
+
+    def test_predict_batch_concurrency_parameter(self):
+        """Test batch prediction with custom concurrency parameter."""
+        mock_model = MagicMock()
+        inference_service = MagicMock(spec=InferenceService)
+        inference_service.load_model.return_value = mock_model
+        inference_service.predict_batch_parallel.return_value = [
+            (0, PredictionResult(predictions={"BaseSalary": {"p50": 100000.0}}, metadata={})),
+        ]
+
+        mock_request = create_mock_request()
+        batch_request = BatchPredictionRequest(features=[{"Level": "L4"}], concurrency=5)
+
+        response = asyncio.run(
+            predict_batch(
+                mock_request,
+                "test123",
+                batch_request,
+                user="test_user",
+                inference_service=inference_service,
+            )
+        )
+
+        assert response is not None
+        assert inference_service.predict_batch_parallel.called
+        call_args = inference_service.predict_batch_parallel.call_args
+        assert call_args[1]["concurrency"] == 5
+
+    def test_predict_batch_empty_batch(self):
+        """Test batch prediction with empty batch (should fail validation)."""
+        with pytest.raises(ValidationError) as exc_info:
+            BatchPredictionRequest(features=[])
+
+        errors = exc_info.value.errors()
+        assert len(errors) > 0
+        assert any("too_short" in str(error.get("type", "")) for error in errors)
+
+    def test_predict_batch_general_exception(self):
+        """Test batch prediction with general exception."""
+        mock_model = MagicMock()
+        inference_service = MagicMock(spec=InferenceService)
+        inference_service.load_model.return_value = mock_model
+        inference_service.predict_batch_parallel.return_value = [
+            (0, Exception("Unexpected error")),
+        ]
+
+        mock_request = create_mock_request()
+        batch_request = BatchPredictionRequest(features=[{"Level": "L4"}])
+
+        response = asyncio.run(
+            predict_batch(
+                mock_request,
+                "test123",
+                batch_request,
+                user="test_user",
+                inference_service=inference_service,
+            )
+        )
+
+        assert response.total == 1
+        assert response.success_count == 0
+        assert response.failure_count == 1
+        assert response.items[0].status_code == 500
+        assert "Unexpected error" in response.items[0].error

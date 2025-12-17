@@ -1,11 +1,13 @@
 """Inference/prediction API endpoints."""
 
 from datetime import datetime
+from typing import List
 
 from fastapi import APIRouter, Depends, Request
 
 from src.api.dependencies import get_current_user
 from src.api.dto.inference import (
+    BatchPredictionItem,
     BatchPredictionRequest,
     BatchPredictionResponse,
     PredictionRequest,
@@ -13,7 +15,13 @@ from src.api.dto.inference import (
 )
 from src.api.exceptions import InvalidInputError
 from src.api.exceptions import ModelNotFoundError as APIModelNotFoundError
-from src.api.rate_limiting import INFERENCE_LIMIT, limiter
+from src.api.rate_limiting import (
+    BATCH_INFERENCE_CONCURRENCY,
+    BATCH_INFERENCE_MAX_SIZE,
+    BATCH_INFERENCE_TIMEOUT,
+    INFERENCE_LIMIT,
+    limiter,
+)
 from src.services.inference_service import InferenceService
 from src.services.inference_service import InvalidInputError as ServiceInvalidInputError
 from src.services.inference_service import ModelNotFoundError
@@ -104,15 +112,46 @@ async def predict_batch(
         InvalidInputError: If input validation fails.
     """
     try:
+        if len(batch_request.features) > BATCH_INFERENCE_MAX_SIZE:
+            raise InvalidInputError(
+                f"Batch size {len(batch_request.features)} exceeds maximum of {BATCH_INFERENCE_MAX_SIZE}"
+            )
+
         model = inference_service.load_model(run_id)
-        predictions = []
 
-        for features in batch_request.features:
-            result = inference_service.predict(model, features)
-            from src.api.dto.inference import PredictionMetadata
+        concurrency = batch_request.concurrency or BATCH_INFERENCE_CONCURRENCY
+        concurrency = min(concurrency, BATCH_INFERENCE_CONCURRENCY)
 
-            predictions.append(
-                PredictionResponse(
+        batch_results = inference_service.predict_batch_parallel(
+            model, batch_request.features, concurrency=concurrency, timeout=BATCH_INFERENCE_TIMEOUT
+        )
+
+        from src.api.dto.inference import PredictionMetadata
+
+        predictions: List[PredictionResponse] = []
+        items: List[BatchPredictionItem] = []
+        success_count = 0
+        failure_count = 0
+
+        for index, result in batch_results:
+            if isinstance(result, Exception):
+                if isinstance(result, ServiceInvalidInputError):
+                    status_code = 400
+                else:
+                    status_code = 500
+                error_msg = str(result)
+                items.append(
+                    BatchPredictionItem(
+                        prediction=None,
+                        status_code=status_code,
+                        error=error_msg,
+                        index=index,
+                    )
+                )
+                failure_count += 1
+                logger.warning(f"Batch prediction failed for item {index}: {error_msg}")
+            else:
+                prediction_response = PredictionResponse(
                     predictions=result.predictions,
                     metadata=PredictionMetadata(
                         model_run_id=run_id,
@@ -120,9 +159,28 @@ async def predict_batch(
                         location_zone=result.metadata.get("location_zone"),
                     ),
                 )
-            )
+                predictions.append(prediction_response)
+                items.append(
+                    BatchPredictionItem(
+                        prediction=prediction_response,
+                        status_code=200,
+                        error=None,
+                        index=index,
+                    )
+                )
+                success_count += 1
 
-        return BatchPredictionResponse(predictions=predictions, total=len(predictions))
+        total = len(batch_request.features)
+        progress = 1.0
+
+        return BatchPredictionResponse(
+            predictions=predictions,
+            items=items,
+            total=total,
+            success_count=success_count,
+            failure_count=failure_count,
+            progress=progress,
+        )
     except ModelNotFoundError as e:
         raise APIModelNotFoundError(run_id) from e
     except ServiceInvalidInputError as e:
