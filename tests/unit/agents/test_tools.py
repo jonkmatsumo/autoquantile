@@ -125,6 +125,140 @@ class TestComputeCorrelationMatrix(unittest.TestCase):
         self.assertIn("col-name", result_dict["columns_analyzed"] or [])
         self.assertIn("col_name", result_dict["columns_analyzed"] or [])
 
+    def test_leading_whitespace_in_columns_parameter(self):
+        """Test columns parameter with leading whitespace (real-world issue)."""
+        df = pd.DataFrame(
+            {
+                "Total Compensation": [100000, 150000, 200000],
+                "Base Salary": [80000, 120000, 160000],
+                "Stock (/yr)": [20000, 30000, 40000],
+                "Bonus": [0, 0, 0],
+            }
+        )
+
+        result = compute_correlation_matrix.invoke(
+            {
+                "df_json": df.to_json(),
+                "columns": " Total Compensation, Base Salary, Stock (/yr), Bonus",
+            }
+        )
+        result_dict = json.loads(result)
+
+        self.assertIn("correlations", result_dict)
+        self.assertIn("Total Compensation", result_dict["columns_analyzed"])
+        self.assertIn("Base Salary", result_dict["columns_analyzed"])
+        self.assertIn("Stock (/yr)", result_dict["columns_analyzed"])
+        self.assertIn("Bonus", result_dict["columns_analyzed"])
+
+    def test_case_insensitive_column_matching(self):
+        """Test case-insensitive column matching."""
+        df = pd.DataFrame(
+            {
+                "Total Compensation": [100000, 150000, 200000],
+                "Base Salary": [80000, 120000, 160000],
+            }
+        )
+
+        result = compute_correlation_matrix.invoke(
+            {"df_json": df.to_json(), "columns": "total compensation, base salary"}
+        )
+        result_dict = json.loads(result)
+
+        self.assertIn("correlations", result_dict)
+        self.assertIn("Total Compensation", result_dict["columns_analyzed"])
+        self.assertIn("Base Salary", result_dict["columns_analyzed"])
+
+    def test_columns_with_whitespace_in_dataframe(self):
+        """Test matching when DataFrame columns have whitespace."""
+        df = pd.DataFrame(
+            {
+                " Total Compensation ": [100000, 150000, 200000],
+                " Base Salary ": [80000, 120000, 160000],
+            }
+        )
+
+        result = compute_correlation_matrix.invoke(
+            {"df_json": df.to_json(), "columns": "Total Compensation, Base Salary"}
+        )
+        result_dict = json.loads(result)
+
+        self.assertIn("correlations", result_dict)
+        self.assertEqual(len(result_dict["columns_analyzed"]), 2)
+
+    def test_detailed_error_message_not_found(self):
+        """Test detailed error message when columns are not found."""
+        df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+
+        result = compute_correlation_matrix.invoke(
+            {"df_json": df.to_json(), "columns": "NonExistent, AlsoMissing"}
+        )
+        result_dict = json.loads(result)
+
+        self.assertIn("error", result_dict)
+        self.assertIn("requested_columns", result_dict)
+        self.assertIn("not_found", result_dict)
+        self.assertIn("available_columns", result_dict)
+        self.assertIn("numeric_columns", result_dict)
+        self.assertEqual(set(result_dict["not_found"]), {"NonExistent", "AlsoMissing"})
+
+    def test_detailed_error_message_not_numeric(self):
+        """Test detailed error message when columns exist but aren't numeric."""
+        df = pd.DataFrame(
+            {
+                "A": [1, 2, 3],
+                "B": [4, 5, 6],
+                "TextCol": ["x", "y", "z"],
+                "AnotherText": ["a", "b", "c"],
+            }
+        )
+
+        result = compute_correlation_matrix.invoke(
+            {"df_json": df.to_json(), "columns": "TextCol, AnotherText"}
+        )
+        result_dict = json.loads(result)
+
+        self.assertIn("error", result_dict)
+        self.assertIn("requested_columns", result_dict)
+        self.assertIn("not_numeric", result_dict)
+        self.assertIn("available_columns", result_dict)
+        self.assertIn("numeric_columns", result_dict)
+        self.assertEqual(set(result_dict["not_numeric"]), {"TextCol", "AnotherText"})
+
+    def test_detailed_error_message_mixed_not_found_and_not_numeric(self):
+        """Test error message with mix of not found and not numeric columns."""
+        df = pd.DataFrame(
+            {
+                "A": [1, 2, 3],
+                "B": [4, 5, 6],
+                "TextCol": ["x", "y", "z"],
+            }
+        )
+
+        result = compute_correlation_matrix.invoke(
+            {"df_json": df.to_json(), "columns": "NonExistent, TextCol"}
+        )
+        result_dict = json.loads(result)
+
+        self.assertIn("error", result_dict)
+        self.assertIn("not_found", result_dict)
+        self.assertIn("not_numeric", result_dict)
+        self.assertIn("NonExistent", result_dict["not_found"])
+        self.assertIn("TextCol", result_dict["not_numeric"])
+
+    def test_detailed_error_message_insufficient_numeric_no_columns_param(self):
+        """Test error message when no columns specified and insufficient numeric columns."""
+        df = pd.DataFrame({"A": [1, 2, 3], "B": ["x", "y", "z"]})
+
+        result = compute_correlation_matrix.invoke({"df_json": df.to_json()})
+        result_dict = json.loads(result)
+
+        self.assertIn("error", result_dict)
+        self.assertIn("available_columns", result_dict)
+        self.assertIn("numeric_columns", result_dict)
+        self.assertIsNone(result_dict.get("requested_columns"))
+        self.assertNotIn("not_found", result_dict)
+        self.assertNotIn("not_numeric", result_dict)
+
 
 class TestGetColumnStatistics(unittest.TestCase):
 

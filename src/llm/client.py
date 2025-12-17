@@ -283,7 +283,7 @@ class OpenAIClient(LLMClient):
 
 
 class GeminiClient(LLMClient):
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-pro") -> None:
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-pro") -> None:
         self.api_key = api_key or get_env_var("GEMINI_API_KEY")
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY not found.")
@@ -704,7 +704,7 @@ def _get_langchain_gemini(
     if not api_key:
         raise ValueError("GEMINI_API_KEY not found in environment.")
 
-    model_name = model or "gemini-1.5-pro"
+    model_name = model or "gemini-2.5-pro"
 
     return ChatGoogleGenerativeAI(
         model=model_name, temperature=temperature, google_api_key=api_key, **kwargs

@@ -68,15 +68,59 @@ def compute_correlation_matrix(df_json: str, columns: Optional[str] = None) -> s
         )
         return json.dumps({"error": f"Failed to create DataFrame: {str(e)}"})
 
+    all_df_columns = df.columns.tolist()
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    logger.debug(f"DataFrame columns: {all_df_columns}")
+    logger.debug(f"Numeric columns in DataFrame: {numeric_cols}")
+
+    requested_cols: Optional[List[str]] = None
+    not_found: List[str] = []
+    not_numeric: List[str] = []
+
     if columns:
-        col_list = [c.strip() for c in columns.split(",")]
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        col_list = [c for c in col_list if c in numeric_cols]
+        columns = columns.strip() if columns else None
+        if not columns:
+            col_list = numeric_cols
+        else:
+            requested_cols = [c.strip() for c in columns.split(",") if c.strip()]
+            logger.debug(f"Requested columns: {requested_cols}")
+
+            col_name_mapping = {col.strip().lower(): col for col in all_df_columns}
+            matched_cols = []
+
+            for req_col in requested_cols:
+                normalized_req = req_col.lower()
+                if normalized_req in col_name_mapping:
+                    actual_col = col_name_mapping[normalized_req]
+                    if actual_col in numeric_cols:
+                        matched_cols.append(actual_col)
+                    else:
+                        not_numeric.append(req_col)
+                else:
+                    not_found.append(req_col)
+
+            logger.debug(f"Matched columns: {matched_cols}")
+            if not_found:
+                logger.debug(f"Columns not found in DataFrame: {not_found}")
+            if not_numeric:
+                logger.debug(f"Columns found but not numeric: {not_numeric}")
+
+            col_list = matched_cols
     else:
-        col_list = df.select_dtypes(include=[np.number]).columns.tolist()
+        col_list = numeric_cols
 
     if len(col_list) < 2:
-        return json.dumps({"error": "Need at least 2 numeric columns for correlation"})
+        correlation_error: Dict[str, Any] = {
+            "error": "Need at least 2 numeric columns for correlation",
+            "requested_columns": requested_cols,
+            "available_columns": all_df_columns,
+            "numeric_columns": numeric_cols,
+            "matched_columns": col_list,
+        }
+        if requested_cols is not None:
+            correlation_error["not_found"] = not_found
+            correlation_error["not_numeric"] = not_numeric
+        return json.dumps(correlation_error, indent=2)
 
     corr_matrix = df[col_list].corr()
 
